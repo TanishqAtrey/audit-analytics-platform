@@ -38,8 +38,7 @@ def get_audit_logs(
         except ValueError:
             pass
 
-    total = query.count()
-    rows = query.order_by(models.AuditLog.run_timestamp.desc()).offset(offset).limit(limit).all()
+    rows = query.order_by(models.AuditLog.run_timestamp.desc()).all()
 
     entries = []
     for r in rows:
@@ -56,5 +55,9 @@ def get_audit_logs(
                 run_by=r.run_by,
             )
         )
+
+    # Apply pagination after filtering so total is accurate
+    total = len(entries)
+    entries = entries[offset : offset + limit]
 
     return AuditLogResponse(entries=entries, total=total)

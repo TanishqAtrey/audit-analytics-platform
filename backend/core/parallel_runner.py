@@ -1,3 +1,4 @@
+# backend/core/parallel_runner.py
 from concurrent.futures import ProcessPoolExecutor
 import pandas as pd
 
@@ -40,13 +41,13 @@ def run_test_parallel(
     n_workers = min(settings.max_parallel_workers, df[partition_column].nunique())
     partitions = _partition_by_column(df, partition_column, n_workers)
 
+    merged: list[TestResult] = []
     with ProcessPoolExecutor(max_workers=n_workers) as pool:
         results_per_partition = pool.map(
             _run_single_test_on_partition,
             [(test, p, config) for p in partitions],
         )
+        for r in results_per_partition:
+            merged.extend(r)
 
-    merged: list[TestResult] = []
-    for r in results_per_partition:
-        merged.extend(r)
     return merged

@@ -1,4 +1,16 @@
-# Intentionally keeping project files tracked.
-# Add individual secrets here if needed later.
-
+# macOS
 .DS_Store
+
+# Environment / secrets
+.env
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Pytest cache
+.pytest_cache/
+
+# Virtual environment
+backend_venv/

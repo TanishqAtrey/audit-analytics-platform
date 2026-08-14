@@ -118,6 +118,8 @@ def run_detection(request: DetectionRunRequest, db: Session = Depends(get_db_ses
         )
         db.add(audit_entry)
         db.commit()
+    except HTTPException:
+        raise
     except Exception as exc:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database persistence error: {str(exc)}")

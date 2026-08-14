@@ -24,8 +24,9 @@ def combine_results(
 
     exceptions = []
     for record_id, scores in per_record_scores.items():
-        # Score average across domain tests
-        ens_score = sum(scores.values()) / max(len(scores), 1)
+        # Average across all domain tests — tests that didn't fire
+        # for this record are implicitly scored as 0.
+        ens_score = sum(scores.values()) / num_tests
         exceptions.append({
             "source_record_id": str(record_id),
             "ensemble_score": round(float(ens_score), 4),
