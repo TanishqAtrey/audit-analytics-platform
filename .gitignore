@@ -1,0 +1,4 @@
+# Intentionally keeping project files tracked.
+# Add individual secrets here if needed later.
+
+.DS_Store
