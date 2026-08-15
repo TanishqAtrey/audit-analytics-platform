@@ -1,0 +1,53 @@
+# ── Python ──
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ── Virtual environments ──
+backend_venv/
+venv/
+.venv/
+env/
+
+# ── Environment variables / secrets ──
+.env
+.env.local
+.env.production
+*.pem
+*.key
+
+# ── IDE ──
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── OS junk ──
+.DS_Store
+Thumbs.db
+
+# ── Data files (large / private) ──
+data_infra/datasets/raw/
+data_infra/datasets/processed/
+!data_infra/datasets/raw/.gitkeep
+!data_infra/datasets/processed/.gitkeep
+*.csv
+*.parquet
+!data_infra/datasets/sample/*.csv
+
+# ── Kaggle credentials ──
+.kaggle/
+kaggle.json
+
+# ── Validation scripts (not part of production) ──
+backend/run_full_validation.py
+data_infra/run_integration_validation.py
+
+# ── Logs ──
+*.log
+
+# ── Docker volumes ──
+postgres_data/
