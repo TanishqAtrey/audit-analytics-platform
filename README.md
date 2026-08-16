@@ -7,7 +7,7 @@
 [![Ledger Precision](https://img.shields.io/badge/Ledger%20Precision-0.970%20%400.5-brightgreen.svg)]()
 [![Test Suite](https://img.shields.io/badge/Tests-67%2F67%20Passed-success.svg)]()
 
-A high-throughput, explainable forensic intelligence engine designed for autonomous corporate financial statement analysis and general ledger transaction auditing. 
+A high-throughput, explainable forensic intelligence engine designed for autonomous corporate financial statement analysis and general ledger transaction  
 
 By unifying **statistical tests (Benford 3-tier ensemble)**, **deterministic forensic rules (Three-Way Match, RapidFuzz duplicate blocking, Beneish M-Score, Altman Z-Score)**, and **unsupervised machine learning (Isolation Forest + Local Outlier Factor ensembles)**, the platform replaces manual sampling with deterministic 100% data population verification.
 
