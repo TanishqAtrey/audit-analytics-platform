@@ -51,3 +51,5 @@ data_infra/run_integration_validation.py
 
 # ── Docker volumes ──
 postgres_data/
+
+.streamlit
