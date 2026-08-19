@@ -23,9 +23,11 @@ if not dataset_id:
     st.caption(f"Load a {domain.replace('_', ' ')} dataset on **Upload Data** to recompute. You can still view the last saved benchmark below.")
 
 cached = api_client.get_benchmark(domain)
-result = st.session_state.get(f"benchmark_{domain}", cached if "error" not in cached else None)
+result = st.session_state.get(f"benchmark_{domain}")
+if result is None and isinstance(cached, dict) and "error" not in cached:
+    result = cached
 
-if result is None:
+if result is None or "error" in (result if isinstance(result, dict) else {}):
     st.info(f"No benchmark computed yet for `{domain}`. Click **Recompute Benchmark** once a dataset is loaded.")
 else:
     baseline, ensemble = result["baseline"], result["ensemble"]

@@ -101,7 +101,7 @@ def get_audit_log(start_date=None, end_date=None, module=None, limit: int = 200)
     if start_date: params["start_date"] = start_date
     if end_date: params["end_date"] = end_date
     if module: params["module"] = module
-    return _get("/audit/log", params=params)
+    return _get("/audit/logs", params=params)
 
 
 # ---- benchmark ----

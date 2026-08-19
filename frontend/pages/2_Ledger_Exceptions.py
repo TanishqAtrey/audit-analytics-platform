@@ -19,8 +19,9 @@ with st.expander("⚙️ Detection settings"):
     run_clicked = st.button("▶ Run Detection", type="primary", key="run_ledger_detection")
 
 if run_clicked:
+    reviewer = st.session_state.get("reviewer_name", "demo_user")
     with st.spinner("Running Benford, duplicate-detection and 3-way-match..."):
-        result = api_client.run_detection("ledger", dataset_id, thresholds)
+        result = api_client.run_detection("ledger", dataset_id, thresholds, run_by=reviewer)
     if "error" in result:
         st.error(f"Detection run failed: {result['error']}")
     else:

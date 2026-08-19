@@ -7,12 +7,17 @@ inject_theme()
 render_hero("Audit", "Log", "Every detection run: when, on what dataset, with which parameters, by whom.")
 
 c1, c2, c3 = st.columns(3)
-start_date = c1.date_input("From", value=None, key="audit_start")
-end_date = c2.date_input("To", value=None, key="audit_end")
+use_start = c1.checkbox("Filter by start date", key="audit_use_start")
+start_date = c1.date_input("From", value=None, key="audit_start", disabled=not use_start) if use_start else None
+use_end = c2.checkbox("Filter by end date", key="audit_use_end")
+end_date = c2.date_input("To", value=None, key="audit_end", disabled=not use_end) if use_end else None
 module_filter = c3.text_input("Filter by module (e.g. benford_ensemble)", key="audit_module")
 
-log = api_client.get_audit_log(start_date=str(start_date) if start_date else None,
-                                end_date=str(end_date) if end_date else None, module=module_filter or None)
+log = api_client.get_audit_log(
+    start_date=str(start_date) if start_date else None,
+    end_date=str(end_date) if end_date else None,
+    module=module_filter or None,
+)
 if "error" in log:
     st.error(f"Could not load audit log: {log['error']}")
     st.stop()

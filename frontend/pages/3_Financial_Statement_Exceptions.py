@@ -19,8 +19,9 @@ with st.expander("⚙️ Detection settings"):
     run_clicked = st.button("▶ Run Detection", type="primary", key="run_fs_detection")
 
 if run_clicked:
+    reviewer = st.session_state.get("reviewer_name", "demo_user")
     with st.spinner("Running Beneish, Altman and ratio-anomaly..."):
-        result = api_client.run_detection("financial_statement", dataset_id, thresholds)
+        result = api_client.run_detection("financial_statement", dataset_id, thresholds, run_by=reviewer)
     if "error" in result:
         st.error(f"Detection run failed: {result['error']}")
     else:

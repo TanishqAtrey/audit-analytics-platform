@@ -2,6 +2,7 @@ import streamlit as st
 
 TEST_COLORS = {
     "benford_ensemble": "#3B82F6", "duplicate_detection": "#2DD4BF", "three_way_match": "#F59E0B",
+    "ledger_transaction_anomaly": "#F97316",
     "beneish_m_score": "#A855F7", "altman_z_score": "#EF4444", "ratio_anomaly": "#22C55E",
 }
 
