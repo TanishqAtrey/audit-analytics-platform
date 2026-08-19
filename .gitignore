@@ -53,3 +53,5 @@ data_infra/run_integration_validation.py
 postgres_data/
 
 .streamlit
+.streamlit/
+config.toml
