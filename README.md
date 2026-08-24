@@ -218,4 +218,3 @@ Interactive OpenAPI documentation will be available at: `http://localhost:8000/d
 
 ## 🔒 Security & Compliance
 * **Data Sanitization**: Automatic neutralization of formula execution characters in spreadsheet exports.
-* **Traceability**: Cryptographically isolated `AuditLog` rows generated for every detection execution.
