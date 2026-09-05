@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg2://audit_user:audit_pass@localhost:5432/audit_db"
     app_env: str = "development"
     api_prefix: str = "/api"
-    cors_allow_origins: list[str] = ["http://localhost:8501"]  # Streamlit default port
+    cors_allow_origins: list[str] = ["http://localhost:3000", "http://localhost:8501"]
 
     default_benford_significance: float = 0.05
     default_duplicate_similarity_threshold: float = 85.0

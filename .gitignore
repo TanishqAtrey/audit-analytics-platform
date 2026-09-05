@@ -57,3 +57,9 @@ postgres_data/
 config.toml
 .streamlit/config.toml
 mock_backend.py
+
+# ── Next.js frontend ──
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+*.tsbuildinfo

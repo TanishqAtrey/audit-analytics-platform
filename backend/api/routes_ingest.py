@@ -88,3 +88,59 @@ def select_financial_statements(request: FinancialStatementSelectRequest, db: Se
         tickers_loaded=sorted({r.ticker for r in rows}),
         tickers_missing=missing,
     )
+
+
+FS_REQUIRED_COLUMNS = {
+    "ticker", "fiscal_year", "revenue", "cogs", "receivables",
+    "current_assets", "ppe", "total_assets", "depreciation",
+    "sga_expense", "current_liabilities", "long_term_debt",
+    "net_income", "cash_flow_ops", "retained_earnings",
+    "market_value_equity", "total_liabilities",
+}
+
+FS_NUMERIC_COLUMNS = FS_REQUIRED_COLUMNS - {"ticker", "fiscal_year"}
+
+
+@router.post("/financial-statements/upload", response_model=LedgerUploadResponse)
+async def upload_financial_statement_csv(file: UploadFile = File(...), db: Session = Depends(get_db_session)):
+    """Upload a raw CSV of financial statement data. Column names must match
+    the schema exactly (case-insensitive). This is the counterpart of
+    /ledger/upload for the financial_statement domain."""
+    raw_bytes = await file.read()
+    validated_df, warnings = validate_uploaded_csv(raw_bytes, expected_kind="financial_statement")
+    if validated_df is None:
+        raise HTTPException(status_code=400, detail="Uploaded file failed validation.")
+
+    missing = FS_REQUIRED_COLUMNS - set(validated_df.columns)
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Missing required column(s): {', '.join(sorted(missing))}")
+
+    dataset_id = str(uuid.uuid4())
+    records = []
+    for _, row in validated_df.iterrows():
+        kwargs = {
+            "ticker": str(row["ticker"]).strip().upper(),
+            "fiscal_year": int(row["fiscal_year"]),
+            "fiscal_period": str(row.get("fiscal_period", "FY")).strip(),
+            "company_name": str(row["company_name"]).strip() if pd.notna(row.get("company_name")) else None,
+            "sector": str(row["sector"]).strip() if pd.notna(row.get("sector")) else None,
+            "is_aaer_fraud_case": bool(row.get("is_aaer_fraud_case", False)),
+        }
+        for col in FS_NUMERIC_COLUMNS:
+            kwargs[col] = float(row[col]) if pd.notna(row.get(col)) else None
+        records.append(models.FinancialStatement(**kwargs))
+
+    try:
+        db.bulk_save_objects(records)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database insert error: {str(e)}")
+
+    return LedgerUploadResponse(
+        dataset_id=dataset_id,
+        rows_ingested=len(records),
+        vendors_detected=int(validated_df["ticker"].nunique()),
+        date_range=None,
+        warnings=warnings,
+    )
