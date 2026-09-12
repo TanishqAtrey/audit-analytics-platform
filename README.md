@@ -213,3 +213,9 @@ Interactive OpenAPI documentation will be available at: `http://localhost:8000/d
 * `PATCH /api/cases/{exception_id}/status` — Triage case reviews (`confirmed`, `false_positive`, `needs_review`).
 * `GET /api/audit/logs` — Query immutable audit trail for compliance verification.
 * `POST /api/benchmark/{domain}/run` — Compute realtime Precision/Recall baseline comparisons.
+
+---
+
+## 🔒 Security & Compliance
+* **Data Sanitization**: Automatic neutralization of formula execution characters in spreadsheet exports.
+* **Traceability**: Cryptographically isolated `AuditLog` rows generated for every detection execution.
