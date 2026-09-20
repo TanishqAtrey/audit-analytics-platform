@@ -5,20 +5,22 @@ import numpy as np
 import pandas as pd
 
 from backend.core.base import DetectionTest, TestResult
+from backend.config import get_settings
 
-M_SCORE_THRESHOLD = -2.22
+settings = get_settings()
+M_SCORE_THRESHOLD = settings.beneish_threshold
 
 COEFFICIENTS = {
-    "DSRI": 0.920,
-    "GMI": 0.528,
-    "AQI": 0.404,
-    "SGI": 0.892,
-    "DEPI": 0.115,
-    "SGAI": -0.172,
-    "LVGI": -0.327,
-    "TATA": 4.679,
+    "DSRI": settings.beneish_coeff_dsri,
+    "GMI": settings.beneish_coeff_gmi,
+    "AQI": settings.beneish_coeff_aqi,
+    "SGI": settings.beneish_coeff_sgi,
+    "DEPI": settings.beneish_coeff_depi,
+    "SGAI": settings.beneish_coeff_sgai,
+    "LVGI": settings.beneish_coeff_lvgi,
+    "TATA": settings.beneish_coeff_tata,
 }
-INTERCEPT = -4.84
+INTERCEPT = settings.beneish_intercept
 
 
 def _safe_div(a: float, b: float) -> float:
@@ -86,7 +88,7 @@ class BeneishMScoreTest(DetectionTest):
             if m_score < threshold:
                 continue
 
-            score = min(1.0, max(0.0, (m_score - threshold) / (0.0 - threshold)))
+            score = min(1.0, max(0.0, (m_score - threshold) / (abs(threshold) + 2.0)))
             top_drivers = sorted(
                 COEFFICIENTS,
                 key=lambda k: abs(COEFFICIENTS[k] * float(variables[k])),

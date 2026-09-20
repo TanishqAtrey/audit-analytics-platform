@@ -19,9 +19,17 @@ class LedgerUploadResponse(BaseModel):
 
 class CuratedCompany(BaseModel):
     ticker: str
-    company_name: str
-    is_aaer_fraud_case: bool
+    company_name: str = ""
+    name: str | None = None
+    is_aaer_fraud_case: bool = False
     sector: str | None = None
+
+    def model_post_init(self, __context):
+        if not self.company_name and self.name:
+            self.company_name = self.name
+        if not self.name and self.company_name:
+            self.name = self.company_name
+
 
 
 class CuratedCompanyListResponse(BaseModel):

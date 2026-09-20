@@ -23,7 +23,8 @@ def cross_domain_isolation_forest_check(kaggle_df: pd.DataFrame, feature_cols: l
     scores = run_isolation_forest(X, contamination=kaggle_df[label_col].mean())
     score_map = dict(zip(ids, scores))
     y_true = kaggle_df[label_col].tolist()
-    y_pred = [scores_to_labels(score_map, threshold)[i] for i in ids]
+    label_map = scores_to_labels(score_map, threshold)
+    y_pred = [label_map[i] for i in ids]
     return {
         "note": ("Cross-domain generalization check only — card-transaction "
                  "fraud is a different domain from vendor/invoice fraud; "

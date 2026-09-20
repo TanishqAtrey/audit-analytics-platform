@@ -5,6 +5,9 @@ from pydantic import BaseModel, Field
 Domain = Literal["ledger", "financial_statement"]
 CaseStatus = Literal["unreviewed", "confirmed", "false_positive", "needs_review"]
 
+from backend.config import get_settings
+settings = get_settings()
+
 
 class ThresholdConfig(BaseModel):
     """One knob per test; the UI slider maps directly onto these fields.
@@ -40,6 +43,18 @@ class ExceptionOut(BaseModel):
     reason_codes: list[ReasonCodeOut]
     created_at: datetime
 
+    vendor: str | None = None
+    amount: float | None = None
+    currency: str | None = settings.default_currency
+    invoice_number: str | None = None
+    date: str | None = None
+
+    company: str | None = None
+    ticker: str | None = None
+    fiscal_year: int | None = None
+    m_score: float | None = None
+    z_score: float | None = None
+
 
 class DetectionRunResponse(BaseModel):
     run_id: int
@@ -56,3 +71,17 @@ class ExceptionListQuery(BaseModel):
     min_score: float | None = None
     limit: int = Field(100, le=1000)
     offset: int = 0
+
+
+class SummaryStatsResponse(BaseModel):
+    total_transactions: int
+    ledger_exceptions: int
+    fs_exceptions: int
+    confirmed_fraud: int
+    false_positives: int
+    needs_review: int
+    precision: float
+    confirmation_rate: float
+    f1_score: float
+    last_run: str | None = None
+    ensemble_vs_baseline: str = "N/A"

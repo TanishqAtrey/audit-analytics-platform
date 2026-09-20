@@ -5,12 +5,14 @@ import numpy as np
 import pandas as pd
 
 from backend.core.base import DetectionTest, TestResult
+from backend.config import get_settings
 
+settings = get_settings()
 
-def _zone(z: float) -> str:
-    if z > 2.99:
+def _zone(z: float, safe_threshold: float, grey_threshold: float) -> str:
+    if z > safe_threshold:
         return "safe"
-    if z >= 1.81:
+    if z >= grey_threshold:
         return "grey"
     return "distress"
 
@@ -26,6 +28,12 @@ class AltmanZScoreTest(DetectionTest):
             if not total_assets or pd.isna(total_assets) or float(total_assets) <= 0:
                 continue
 
+            # Skip rows with NaN in any required field
+            required_fields = ["current_assets", "current_liabilities", "retained_earnings",
+                               "net_income", "market_value_equity", "revenue", "total_liabilities"]
+            if any(pd.isna(row.get(f)) for f in required_fields):
+                continue
+
             total_assets = float(total_assets)
             working_capital = float(row["current_assets"]) - float(row["current_liabilities"])
             a = working_capital / total_assets
@@ -38,12 +46,12 @@ class AltmanZScoreTest(DetectionTest):
             d = float(row["market_value_equity"]) / tot_liab
             e = float(row["revenue"]) / total_assets
 
-            z = 1.2 * a + 1.4 * b + 3.3 * c + 0.6 * d + 1.0 * e
-            zone = _zone(z)
+            z = settings.altman_coeff_a * a + settings.altman_coeff_b * b + settings.altman_coeff_c * c + settings.altman_coeff_d * d + settings.altman_coeff_e * e
+            zone = _zone(z, settings.altman_safe_threshold, settings.altman_grey_threshold)
             if zone == "safe":
                 continue
 
-            score = 0.85 if zone == "distress" else 0.50
+            score = settings.altman_distress_score if zone == "distress" else settings.altman_grey_score
             results.append(
                 TestResult(
                     record_id=str(row["record_id"]),

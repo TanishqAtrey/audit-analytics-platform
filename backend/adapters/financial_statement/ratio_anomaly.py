@@ -6,6 +6,9 @@ from backend.core.base import DetectionTest, TestResult
 from backend.ml.isolation_forest import run_isolation_forest
 from backend.ml.lof import run_lof
 from backend.ml.model_utils import build_feature_matrix
+from backend.config import get_settings
+
+settings = get_settings()
 
 RATIO_FEATURES = [
     "current_ratio", "debt_to_equity", "gross_margin",
@@ -29,17 +32,17 @@ class RatioAnomalyTest(DetectionTest):
 
     def run(self, df: pd.DataFrame, config: dict) -> list[TestResult]:
         ratios_df = _derive_ratios(df).dropna(subset=RATIO_FEATURES)
-        if len(ratios_df) < 5:
+        if len(ratios_df) < settings.min_ml_sample_size:
             return []
 
         X, record_ids = build_feature_matrix(ratios_df, RATIO_FEATURES, "record_id")
-        if_scores = run_isolation_forest(X, contamination=config.get("isolation_forest_contamination", 0.05))
-        lof_scores = run_lof(X, contamination=config.get("lof_contamination", 0.05))
+        if_scores = run_isolation_forest(X, contamination=config.get("isolation_forest_contamination", settings.default_isolation_forest_contamination))
+        lof_scores = run_lof(X, contamination=config.get("lof_contamination", settings.default_lof_contamination))
 
         results = []
         for record_id, if_s, lof_s in zip(record_ids, if_scores, lof_scores):
             combined = float((if_s + lof_s) / 2.0)
-            if combined <= 0.25:
+            if combined <= settings.ml_combined_score_floor:
                 continue
             results.append(
                 TestResult(

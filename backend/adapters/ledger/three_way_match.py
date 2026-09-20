@@ -3,13 +3,16 @@
 
 import pandas as pd
 from backend.core.base import DetectionTest, TestResult
+from backend.config import get_settings
+
+settings = get_settings()
 
 RULE_WEIGHTS = {
-    "missing_po": 0.9,
-    "missing_goods_receipt": 0.7,
-    "price_variance": 0.6,
-    "quantity_variance": 0.6,
-    "po_overbilled": 0.85,
+    "missing_po": settings.rule_weight_missing_po,
+    "missing_goods_receipt": settings.rule_weight_missing_gr,
+    "price_variance": settings.rule_weight_price_variance,
+    "quantity_variance": settings.rule_weight_quantity_variance,
+    "po_overbilled": settings.rule_weight_po_overbilled,
 }
 
 
@@ -18,7 +21,7 @@ class ThreeWayMatchTest(DetectionTest):
     domain = "ledger"
 
     def run(self, df: pd.DataFrame, config: dict) -> list[TestResult]:
-        tolerance_pct = config.get("three_way_match_tolerance_pct", 0.02)
+        tolerance_pct = config.get("three_way_match_tolerance_pct", settings.default_three_way_match_tolerance_pct)
         results = []
 
         has_po_amount = "po_amount" in df.columns
@@ -26,8 +29,10 @@ class ThreeWayMatchTest(DetectionTest):
         has_gr_qty = "gr_quantity" in df.columns
 
         overbilled_pos = set()
-        if has_po_amount:
+        if has_po_amount and "po_reference" in df.columns:
             valid_pos = df.dropna(subset=["po_reference", "po_amount"])
+            # Also filter out string representations of null values
+            valid_pos = valid_pos[~valid_pos["po_reference"].astype(str).str.strip().str.lower().isin(["", "nan", "none"])]
             if not valid_pos.empty:
                 po_totals = (
                     valid_pos.groupby("po_reference")
@@ -44,11 +49,11 @@ class ThreeWayMatchTest(DetectionTest):
         for _, row in df.iterrows():
             violations, weights = [], []
 
-            if pd.isna(row.get("po_reference")) or str(row.get("po_reference", "")).strip() in ("", "None", "nan"):
+            if pd.isna(row.get("po_reference")) or str(row.get("po_reference", "")).strip().lower() in ("", "none", "nan"):
                 violations.append("no matching PO on file")
                 weights.append(RULE_WEIGHTS["missing_po"])
 
-            if pd.isna(row.get("gr_reference")) or str(row.get("gr_reference", "")).strip() in ("", "None", "nan"):
+            if pd.isna(row.get("gr_reference")) or str(row.get("gr_reference", "")).strip().lower() in ("", "none", "nan"):
                 violations.append("no matching goods receipt on file")
                 weights.append(RULE_WEIGHTS["missing_goods_receipt"])
 

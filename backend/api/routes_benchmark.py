@@ -2,12 +2,16 @@
 """Naive-baseline vs full-ensemble comparison — powers the benchmark
 chart. Results are computed and cached in `benchmark_results`; GET reads that back."""
 
+import logging
+logger = logging.getLogger(__name__)
+
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from data_infra.db.connection import get_db_session
 from data_infra.db import models
+from backend.validation.baseline_comparison import DEFAULT_THRESHOLDS
 from backend.core.registry import tests_for_domain
 from backend.validation.baseline_comparison import compare_baseline_vs_ensemble
 from backend.adapters.ledger.adapter import reshape_transactions
@@ -35,6 +39,7 @@ def get_benchmark(domain: str, db: Session = Depends(get_db_session)):
         )
     return {
         "domain": row.domain,
+        "thresholds": DEFAULT_THRESHOLDS,
         "baseline": {"precision": row.baseline_precision, "recall": row.baseline_recall, "f1": row.baseline_f1},
         "ensemble": {"precision": row.ensemble_precision, "recall": row.ensemble_recall, "f1": row.ensemble_f1},
         "computed_at": row.computed_at,

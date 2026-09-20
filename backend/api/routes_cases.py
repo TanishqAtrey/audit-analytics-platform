@@ -15,7 +15,7 @@ router = APIRouter()
 
 @router.patch("/{exception_id}/status", response_model=CaseStatusUpdateResponse)
 def update_case_status(exception_id: int, request: CaseStatusUpdateRequest, db: Session = Depends(get_db_session)):
-    exc_row = db.query(models.Exception).filter(models.Exception.id == exception_id).first()
+    exc_row = db.query(models.AuditException).filter(models.AuditException.id == exception_id).first()
     if exc_row is None:
         raise HTTPException(status_code=404, detail=f"Exception {exception_id} not found.")
 

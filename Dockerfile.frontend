@@ -1,0 +1,11 @@
+FROM node:20-alpine
+
+WORKDIR /app/dashboard
+
+COPY dashboard/package*.json ./
+RUN npm install
+
+COPY dashboard/ .
+
+EXPOSE 3000
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

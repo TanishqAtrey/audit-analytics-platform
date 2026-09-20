@@ -36,6 +36,11 @@ def reshape_transactions(raw_df: pd.DataFrame) -> pd.DataFrame:
     if "invoice_number" not in df.columns:
         df["invoice_number"] = ""
 
+    # Cast PO/GR numeric columns for three-way match
+    for col in ["po_amount", "po_quantity", "gr_quantity"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
     missing = [c for c in REQUIRED_COLUMNS if c not in df.columns]
     if missing:
         raise ValueError(f"Ledger adapter: missing required columns {missing}")

@@ -7,8 +7,11 @@ import pandas as pd
 from scipy import stats
 
 from backend.core.base import DetectionTest, TestResult
+from backend.config import get_settings
 
-MIN_SAMPLE_SIZE = 30  # statistical noise floor
+settings = get_settings()
+
+MIN_SAMPLE_SIZE = settings.min_benford_sample_size  # statistical noise floor
 
 MAD_THRESHOLDS = {
     "first_digit": [
@@ -42,7 +45,7 @@ def _mad_label(test_key: str, mad: float) -> str:
 def _clean_digit_strings(amounts: pd.Series) -> pd.Series:
     """Extract clean numeric digits from positive amounts, preserving Series index."""
     abs_amounts = amounts.abs()
-    return abs_amounts.apply(lambda x: f"{x:.10g}".replace(".", "").lstrip("0") if (pd.notna(x) and x > 0) else "")
+    return abs_amounts.apply(lambda x: f"{x:.15f}".replace(".", "").lstrip("0") if (pd.notna(x) and x > 0) else "")
 
 
 def _extract_digits(digit_strs: pd.Series, mode: str) -> pd.Series:
@@ -112,9 +115,9 @@ class BenfordEnsembleTest(DetectionTest):
     domain = "ledger"
 
     def run(self, df: pd.DataFrame, config: dict) -> list[TestResult]:
-        sensitivity = config.get("benford_sensitivity", 0.5)
-        # Sensitivity 0..1 maps alpha from 0.10 (permissive) to 0.01 (strict)
-        alpha = 0.10 - (0.09 * sensitivity)
+        sensitivity = config.get("benford_sensitivity", settings.default_benford_sensitivity)
+        # Sensitivity 0..1 maps alpha from 0.01 (strict, fewer flags) to 0.10 (permissive, more flags)
+        alpha = 0.01 + (0.09 * sensitivity)
 
         results: list[TestResult] = []
         for vendor, group in df.groupby("vendor"):

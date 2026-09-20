@@ -38,7 +38,7 @@ def run_test_parallel(
     if len(df) < 5000 or partition_column not in df.columns:
         return test.run(df, config)
 
-    n_workers = min(settings.max_parallel_workers, df[partition_column].nunique())
+    n_workers = max(1, min(settings.max_parallel_workers, df[partition_column].nunique()))
     partitions = _partition_by_column(df, partition_column, n_workers)
 
     merged: list[TestResult] = []

@@ -3,6 +3,10 @@
 and on startup verify Postgres is reachable + make sure every test has
 registered itself. No detection logic or DB session handling lives here."""
 
+import logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s %(levelname)s %(message)s')
+logger = logging.getLogger(__name__)
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

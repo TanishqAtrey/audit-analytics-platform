@@ -14,3 +14,10 @@ __pycache__/
 
 # Virtual environment
 backend_venv/
+
+# Node.js / Frontend
+node_modules/
+dist/
+build/
+.env.local
+.eslintcache
