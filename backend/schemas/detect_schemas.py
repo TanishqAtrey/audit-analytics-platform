@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal
+from typing import Literal, Any
 from pydantic import BaseModel, Field
 
 Domain = Literal["ledger", "financial_statement"]
@@ -23,8 +23,8 @@ class DetectionRunRequest(BaseModel):
     domain: Domain
     dataset_id: str
     tests: list[str] | None = None   # None = run every registered test for this domain
-    thresholds: ThresholdConfig = ThresholdConfig()
-    run_by: str = "demo_user"        # minimal session identity — see Section 6 of the spec
+    thresholds: ThresholdConfig = Field(default_factory=ThresholdConfig)
+    run_by: str = "analyst"
 
 
 class ReasonCodeOut(BaseModel):
@@ -54,6 +54,9 @@ class ExceptionOut(BaseModel):
     fiscal_year: int | None = None
     m_score: float | None = None
     z_score: float | None = None
+    altman_zone: str | None = None
+    altman_ratios: dict[str, Any] | None = None
+    beneish_ratios: dict[str, Any] | None = None
 
 
 class DetectionRunResponse(BaseModel):
@@ -69,8 +72,19 @@ class ExceptionListQuery(BaseModel):
     domain: Domain | None = None
     status: CaseStatus | None = None
     min_score: float | None = None
-    limit: int = Field(100, le=1000)
+    limit: int = Field(100, le=50000)
     offset: int = 0
+    sort_by: str | None = None
+
+
+class AnomalyDriverOut(BaseModel):
+    name: str
+    count: int
+
+
+class TopVendorOut(BaseModel):
+    name: str
+    amount: float
 
 
 class SummaryStatsResponse(BaseModel):
@@ -83,5 +97,10 @@ class SummaryStatsResponse(BaseModel):
     precision: float
     confirmation_rate: float
     f1_score: float
+    recall: float = 0.0
+    fp_reduction_pct: float = 0.0
+    reviewer_precision: float = 0.0
+    anomaly_drivers: list[AnomalyDriverOut] = []
+    top_vendors: list[TopVendorOut] = []
     last_run: str | None = None
     ensemble_vs_baseline: str = "N/A"

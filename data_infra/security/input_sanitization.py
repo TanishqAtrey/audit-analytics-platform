@@ -64,4 +64,50 @@ def validate_uploaded_csv(raw_bytes: bytes, expected_kind: str = "ledger") -> Tu
         else:
             df["invoice_date"] = None
 
+    elif expected_kind in ("financial_statement", "statements"):
+        required = [
+            "ticker", "fiscal_year", "revenue", "cogs", "receivables",
+            "current_assets", "ppe", "total_assets", "depreciation",
+            "sga_expense", "current_liabilities", "long_term_debt",
+            "net_income", "cash_flow_ops", "retained_earnings",
+            "market_value_equity", "total_liabilities",
+        ]
+        missing = [col for col in required if col not in df.columns]
+        if missing:
+            return None, [f"Critical error: Missing mandatory financial statement columns: {', '.join(missing)}"]
+
+        if "company" not in df.columns:
+            df["company"] = df["ticker"]
+        if "is_aaer_fraud_case" not in df.columns:
+            df["is_aaer_fraud_case"] = False
+        else:
+            df["is_aaer_fraud_case"] = df["is_aaer_fraud_case"].fillna(False).astype(bool)
+
+        numeric_cols = [c for c in required if c not in ("ticker", "fiscal_year")]
+        for c in numeric_cols:
+            df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0.0)
+
+        if "ebit" in df.columns:
+            df["ebit"] = pd.to_numeric(df["ebit"], errors="coerce").fillna(
+                (df["revenue"] - df["cogs"] - df["sga_expense"] - df["depreciation"]).round(2)
+            )
+        else:
+            df["ebit"] = (df["revenue"] - df["cogs"] - df["sga_expense"] - df["depreciation"]).round(2)
+
+        df["fiscal_year"] = pd.to_numeric(df["fiscal_year"], errors="coerce").fillna(0).astype(int)
+        df["ticker"] = df["ticker"].astype(str).str.strip().str.upper()
+        df["company"] = df["company"].astype(str).str.strip()
+
+        ratio_float_cols = [
+            "altman_x1_wc_ta", "altman_x2_re_ta", "altman_x3_ebit_ta", "altman_x4_mve_tl", "altman_x5_sales_ta", "altman_z_score",
+            "beneish_dsri", "beneish_gmi", "beneish_aqi", "beneish_sgi", "beneish_depi", "beneish_sgai", "beneish_lvgi", "beneish_tata", "beneish_m_score"
+        ]
+        for rc in ratio_float_cols:
+            if rc in df.columns:
+                df[rc] = pd.to_numeric(df[rc], errors="coerce")
+        if "beneish_manipulator" in df.columns:
+            df["beneish_manipulator"] = df["beneish_manipulator"].map(lambda x: True if str(x).lower() in ('true', '1') else False if str(x).lower() in ('false', '0') else None)
+        if "altman_zone" in df.columns:
+            df["altman_zone"] = df["altman_zone"].astype(str).str.strip().str.lower()
+
     return df, warnings

@@ -2,22 +2,26 @@ import React, { useEffect, useState, useMemo } from 'react'
 import {
   Box, Grid, Typography, Card, CardContent, Divider,
   CircularProgress, Alert, LinearProgress, Tooltip, Chip, Button,
+  Dialog, DialogTitle, DialogContent, DialogActions, Table, TableHead,
+  TableBody, TableRow, TableCell, TableContainer, IconButton,
+  Select, MenuItem, FormControl,
 } from '@mui/material'
 import {
   WarningAmber, CheckCircle, Pending, Assessment,
-  TrendingUp, Security,
-  DeleteOutline, Refresh,
+  TrendingUp, Security, DonutLarge,
+  DeleteOutline, Refresh, Close, OpenInNew,
 } from '@mui/icons-material'
 import {
   ResponsiveContainer, LineChart, Line, BarChart, Bar,
   XAxis, YAxis, Tooltip as RTooltip, CartesianGrid, Legend,
   AreaChart, Area, PieChart, Pie, Cell,
 } from 'recharts'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 import StatCard   from '../components/StatCard'
 import ChartCard, { WhiteChartCard } from '../components/ChartCard'
-import { getSummaryStats, getLedgerExceptions, getBenfordAnalysis, getAuditLog, healthCheck, resetPlatformData } from '../api/client'
+import { getSummaryStats, getLedgerExceptions, getBenfordAnalysis, getAuditLog, healthCheck, resetPlatformData, updateExceptionStatus } from '../api/client'
+import { StatusChip } from '../components/StatusChip'
 import { formatCurrency } from '../utils/formatters'
 import { DEFAULTS, THRESHOLDS } from '../config/constants'
 
@@ -72,6 +76,50 @@ export default function Dashboard() {
   const [resetting, setResetting] = useState(false)
 
   const mounted = React.useRef(true)
+  const navigate = useNavigate()
+
+  // Marked transactions modal state
+  const [modalOpen, setModalOpen] = useState(false)
+  const [modalConfig, setModalConfig] = useState({
+    title: '',
+    status: null,
+    minScore: 0,
+    color: '#1976d2',
+    icon: null,
+    description: '',
+    filterParam: '',
+  })
+  const [modalItems, setModalItems] = useState([])
+  const [modalLoading, setModalLoading] = useState(false)
+  const [modalUpdatingId, setModalUpdatingId] = useState(null)
+
+  const handleOpenStatusModal = async (cfg) => {
+    setModalConfig(cfg)
+    setModalOpen(true)
+    setModalLoading(true)
+    try {
+      const data = await getLedgerExceptions(cfg.minScore ?? 0, 100, 0, 'score_desc', cfg.status)
+      setModalItems(data || [])
+    } catch (e) {
+      console.error('Failed to fetch modal transactions:', e)
+      setModalItems([])
+    } finally {
+      setModalLoading(false)
+    }
+  }
+
+  const handleStatusChangeInModal = async (id, newStatus) => {
+    setModalUpdatingId(id)
+    try {
+      await updateExceptionStatus(id, newStatus)
+      setModalItems(prev => prev.map(item => item.id === id ? { ...item, status: newStatus } : item))
+      getSummaryStats().then(s => { if (s && mounted.current) setStats(s) })
+    } catch (e) {
+      console.error('Failed to update status in modal:', e)
+    } finally {
+      setModalUpdatingId(null)
+    }
+  }
 
   const reloadData = () => {
     setLoading(true)
@@ -115,6 +163,7 @@ export default function Dashboard() {
     if (lower.includes('3-way') || lower.includes('three-way') || lower.includes('po')) return '3-Way Mismatch'
     if (lower.includes('benford 1st') || lower.includes('first digit')) return 'Benford 1st-Digit'
     if (lower.includes('benford 2nd') || lower.includes('second digit')) return 'Benford 2nd-Digit'
+    if (lower.includes('benford')) return "Benford's Law"
     if (lower.includes('duplicate') || lower.includes('fuzz')) return 'Duplicate Invoice'
     if (lower.includes('isolation') || lower.includes('forest')) return 'Isolation Forest'
     if (lower.includes('lof') || lower.includes('local outlier')) return 'LOF Outlier'
@@ -124,6 +173,9 @@ export default function Dashboard() {
   }
 
   const reasonCodeCounts = useMemo(() => {
+    if (stats?.anomaly_drivers && stats.anomaly_drivers.length > 0) {
+      return stats.anomaly_drivers
+    }
     const counts = {}
     const list = Array.isArray(ledger) ? ledger : []
     list.forEach(e => {
@@ -136,9 +188,12 @@ export default function Dashboard() {
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 5)
-  }, [ledger])
+  }, [stats?.anomaly_drivers, ledger])
 
   const topVendorAnomalies = useMemo(() => {
+    if (stats?.top_vendors && stats.top_vendors.length > 0) {
+      return stats.top_vendors
+    }
     const vendors = {}
     const list = Array.isArray(ledger) ? ledger : []
     list.filter(e => (e.ensemble_score ?? 0) >= 0.5).forEach(e => {
@@ -150,7 +205,7 @@ export default function Dashboard() {
       .map(([name, amount]) => ({ name, amount: Math.round(amount) }))
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 5)
-  }, [ledger])
+  }, [stats?.top_vendors, ledger])
 
   if (loading) {
     return (
@@ -161,13 +216,20 @@ export default function Dashboard() {
   }
 
   /* ── Derived data ─────────────────────────────────────────────── */
-  const statusCounts = ledger.reduce((acc, e) => {
+  const statusCounts = stats?.ledger_exceptions != null && stats.ledger_exceptions > 0 ? {
+    unreviewed: Math.max(0, (stats.ledger_exceptions || 0) - (stats.confirmed_fraud || 0) - (stats.false_positives || 0) - (stats.needs_review || 0)),
+    confirmed: stats.confirmed_fraud || 0,
+    false_positive: stats.false_positives || 0,
+    needs_review: stats.needs_review || 0,
+  } : ledger.reduce((acc, e) => {
     acc[e.status] = (acc[e.status] ?? 0) + 1; return acc
   }, {})
 
-  const pieData = Object.entries(statusCounts).map(([k, v]) => ({
-    name: k.replace('_', ' '), value: v, fill: STATUS_COLORS[k],
-  }))
+  const pieData = Object.entries(statusCounts)
+    .filter(([_, v]) => v > 0)
+    .map(([k, v]) => ({
+      name: k.replace('_', ' '), value: v, fill: STATUS_COLORS[k],
+    }))
 
   const benfordChartData = benford
     ? Array.from({ length: 9 }, (_, i) => ({
@@ -265,25 +327,60 @@ export default function Dashboard() {
       )}
 
       {/* ── Stat cards ────────────────────────────────────────── */}
-      <Grid container spacing={3} sx={{ mb: 5 }}>
+      <Grid container spacing={3} sx={{ mb: 5 }} alignItems="stretch">
         {[
           {
             icon: <WarningAmber />, iconColor: G.orange, iconShadow: S.orange,
             title: 'Exceptions Flagged',
             value: (stats?.ledger_exceptions || 0).toLocaleString(),
             footer: 'Accounts Payable anomalies',
+            onClick: () => handleOpenStatusModal({
+              title: 'Flagged Ledger Exceptions',
+              status: null,
+              minScore: 0.5,
+              color: '#fb8c00',
+              icon: <WarningAmber />,
+              description: 'All anomalies detected with ensemble risk score >= 0.50',
+              filterParam: '',
+            }),
+          },
+          {
+            icon: <WarningAmber />, iconColor: G.red, iconShadow: S.red,
+            title: 'Critical Flagged',
+            value: (stats?.critical_flagged || 0).toLocaleString(),
+            footer: 'Score ≥ 75%',
+            trend: stats?.critical_flagged > 0 ? { value: 'High Risk', up: false } : undefined,
+            onClick: () => handleOpenStatusModal({
+              title: 'Critical Flagged Exceptions',
+              status: null,
+              minScore: 0.75,
+              color: '#d32f2f',
+              icon: <WarningAmber />,
+              description: 'High-risk ledger transactions with ensemble score ≥ 75%',
+              filterParam: '',
+            }),
           },
           {
             icon: <CheckCircle />, iconColor: G.green, iconShadow: S.green,
             title: 'Confirmed Fraud',
             value: (stats?.confirmed_fraud || 0).toLocaleString(),
             footer: 'Reviewed by analysts',
+            onClick: () => handleOpenStatusModal({
+              title: 'Confirmed Fraud Transactions',
+              status: 'confirmed',
+              minScore: 0,
+              color: '#00897b',
+              icon: <CheckCircle />,
+              description: 'Transactions confirmed as fraudulent or high-risk anomalies during audit review',
+              filterParam: 'confirmed',
+            }),
           },
           {
             icon: <Assessment />, iconColor: G.purple, iconShadow: S.purple,
             title: 'Total Transactions',
             value: (stats?.total_transactions || 0).toLocaleString(),
             footer: 'Across all datasets',
+            onClick: () => navigate('/ledger'),
           },
           {
             icon: <TrendingUp />, iconColor: G.blue, iconShadow: S.blue,
@@ -291,22 +388,41 @@ export default function Dashboard() {
             value: stats?.f1_score ? stats.f1_score.toFixed(3) : '0.000',
             footer: `Ensemble vs baseline: ${stats?.ensemble_vs_baseline || 'N/A'}`,
             trend: stats?.ensemble_vs_baseline ? { value: stats.ensemble_vs_baseline, up: true } : undefined,
+            onClick: () => navigate('/benchmark'),
           },
           {
             icon: <Pending />, iconColor: G.pink, iconShadow: S.pink,
             title: 'Needs Review',
             value: (stats?.needs_review || 0).toLocaleString(),
             footer: 'Pending analyst action',
+            onClick: () => handleOpenStatusModal({
+              title: 'Transactions Needing Review',
+              status: 'unreviewed',
+              minScore: 0.5,
+              color: '#d81b60',
+              icon: <Pending />,
+              description: 'Flagged exceptions awaiting auditor investigation and triage',
+              filterParam: 'unreviewed',
+            }),
           },
           {
             icon: <Security />, iconColor: G.red, iconShadow: S.red,
             title: 'False Positives',
             value: (stats?.false_positives || 0).toLocaleString(),
             footer: 'Cleared by reviewers',
+            onClick: () => handleOpenStatusModal({
+              title: 'False Positive Transactions',
+              status: 'false_positive',
+              minScore: 0,
+              color: '#e53935',
+              icon: <Security />,
+              description: 'Transactions reviewed and cleared as benign false alarms',
+              filterParam: 'false_positive',
+            }),
           },
         ].map((card, i) => (
-          <Grid item xs={12} sm={6} md={4} key={i}>
-            <StatCard {...card} />
+          <Grid item xs={12} sm={6} md={4} key={i} sx={{ display: 'flex' }}>
+            <StatCard {...card} sx={{ width: '100%' }} />
           </Grid>
         ))}
       </Grid>
@@ -319,13 +435,13 @@ export default function Dashboard() {
             color="linear-gradient(195deg, #66BB6A, #388E3C)"
             shadow={S.green}
             title="Benford's Law Analysis"
-            subtitle={benford ? `MAD: ${benford.mad?.toFixed(4)} · χ² p: ${benford.chi2_p?.toFixed(3)}` : 'Awaiting data'}
+            subtitle={benford ? `MAD: ${benford.mad?.toFixed(4)} · χ² p: ${benford.chi2_p < 0.001 ? '< 0.001' : benford.chi2_p?.toFixed(3)}` : 'Awaiting data'}
             footer={benford ? `${benford.chi2_p < 0.05 ? 'Suspicious — p < 0.05' : 'Normal distribution'}` : 'Upload data to generate analysis'}
             headerHeight={180}
           >
             {benfordChartData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={benfordChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <BarChart data={benfordChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <Bar dataKey="Expected" fill="rgba(255,255,255,0.3)" radius={[2, 2, 0, 0]} />
                   <Bar dataKey="Observed" fill="rgba(255,255,255,0.85)" radius={[2, 2, 0, 0]} />
                   <XAxis dataKey="digit" tick={{ fill: '#fff', fontSize: 10 }} axisLine={false} tickLine={false} />
@@ -354,7 +470,7 @@ export default function Dashboard() {
           >
             {timelineData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={timelineData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <AreaChart data={timelineData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%"  stopColor="#fff" stopOpacity={0.3} />
@@ -390,7 +506,7 @@ export default function Dashboard() {
             shadow={S.red}
             title="Exception Status"
             subtitle="Review progress"
-            footer={`${ledger.length} total exceptions`}
+            footer={stats?.ledger_exceptions ? `${stats.ledger_exceptions.toLocaleString()} total exceptions` : `${ledger.length} total exceptions`}
             headerHeight={180}
           >
             {pieData.length > 0 ? (
@@ -414,9 +530,9 @@ export default function Dashboard() {
               </ResponsiveContainer>
             ) : (
               <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'rgba(255,255,255,0.7)' }}>
-                <Security sx={{ fontSize: 40, mb: 1, opacity: 0.5 }} />
-                <Typography variant="caption" sx={{ fontWeight: 600 }}>No exceptions</Typography>
-                <Typography variant="caption" sx={{ opacity: 0.6, fontSize: '0.65rem' }}>Upload data first</Typography>
+                <DonutLarge sx={{ fontSize: 40, mb: 1, opacity: 0.5 }} />
+                <Typography variant="caption" sx={{ fontWeight: 600 }}>No status data</Typography>
+                <Typography variant="caption" sx={{ opacity: 0.6, fontSize: '0.65rem' }}>Upload data to view progress</Typography>
               </Box>
             )}
           </ChartCard>
@@ -428,7 +544,7 @@ export default function Dashboard() {
         <Grid item xs={12} md={6}>
           <WhiteChartCard
             title="Active Anomaly Drivers"
-            subtitle="Trigger frequency of exception reason codes across all ledger datasets."
+            subtitle={stats?.ledger_exceptions ? `Frequency of risk indicators across all ${stats.ledger_exceptions.toLocaleString()} flagged exceptions (records can trigger multiple tests).` : "Frequency of risk indicators across exceptions (records can trigger multiple tests)."}
             footer={reasonCodeCounts.length > 0 ? "Indicates the most active risk/fraud vectors in the transaction ledger" : "Upload data to generate analysis"}
             height={200}
           >
@@ -459,7 +575,7 @@ export default function Dashboard() {
         <Grid item xs={12} md={6}>
           <WhiteChartCard
             title="Outlier Spend Analysis by Vendor"
-            subtitle="Cumulative transactional amount flagged as anomalous per vendor (USD)."
+            subtitle={stats?.ledger_exceptions ? `Cumulative transactional amount flagged across all ${stats.ledger_exceptions.toLocaleString()} exceptions.` : "Cumulative transactional amount flagged across exceptions."}
             footer={topVendorAnomalies.length > 0 ? "Highlights vendors with high-value anomalies needing prioritization" : "Upload data to generate analysis"}
             height={200}
           >
@@ -559,7 +675,7 @@ export default function Dashboard() {
                 { label: 'Precision',  value: stats?.precision || 0,  color: '#4caf50',  pct: Math.round((stats?.precision || 0) * 100)  },
                 { label: 'Recall',     value: stats?.recall || 0,     color: '#2196f3',  pct: Math.round((stats?.recall || 0) * 100)     },
                 { label: 'F1 Score',   value: stats?.f1_score || 0,   color: '#9c27b0',  pct: Math.round((stats?.f1_score || 0) * 100)   },
-                { label: 'FP Reduction', value: stats?.false_positives ? 1 - (stats.false_positives / Math.max(stats.total_transactions || 1, 1)) : 0, color: '#ff9800', pct: stats?.false_positives ? Math.round((1 - (stats.false_positives / Math.max(stats.total_transactions || 1, 1))) * 1000) / 10 : 0, suffix: '%' },
+                { label: 'FP Reduction', value: (stats?.fp_reduction_pct || 0) / 100, color: '#ff9800', pct: stats?.fp_reduction_pct != null ? Math.round(stats.fp_reduction_pct * 10) / 10 : 0, suffix: '%' },
               ].map(({ label, value, color, pct, suffix }) => (
                 <Box key={label} sx={{ mb: 2.5 }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
@@ -570,7 +686,7 @@ export default function Dashboard() {
                   </Box>
                   <LinearProgress
                     variant="determinate"
-                    value={pct}
+                    value={Math.min(100, Math.max(0, pct))}
                     sx={{
                       height: 6, borderRadius: 3,
                       bgcolor: '#f5f5f5',
@@ -583,17 +699,183 @@ export default function Dashboard() {
               <Divider sx={{ my: 2 }} />
 
               <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                {['SEC EDGAR', 'USASpending', 'SEC AAER', 'Kaggle'].map(src => (
-                  <Chip key={src} label={src} size="small" variant="outlined" sx={{ fontSize: '0.68rem', color: '#666' }} />
+                {['3-Way Match', "Benford's Law", 'Isolation Forest', 'Duplicate Invoices'].map(src => (
+                  <Chip key={src} label={src} size="small" variant="outlined" sx={{ fontSize: '0.68rem', color: '#555', fontWeight: 500 }} />
                 ))}
               </Box>
-              <Typography variant="caption" sx={{ color: '#bbb', mt: 1, display: 'block', fontStyle: 'italic' }}>
-                All data sources public · No PII processed
+              <Typography variant="caption" sx={{ color: '#888', mt: 1, display: 'block', fontStyle: 'italic' }}>
+                Ensemble model evaluated vs baseline at 0.50 operational threshold
               </Typography>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
+
+      {/* ── Marked Transactions Modal Dialog ───────────────────────── */}
+      <Dialog
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: '16px',
+            boxShadow: '0 24px 48px rgba(0,0,0,0.2)',
+            overflow: 'hidden',
+          }
+        }}
+      >
+        <DialogTitle sx={{ m: 0, p: 2.5, bgcolor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Box
+                sx={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: '10px',
+                  bgcolor: modalConfig.color,
+                  color: '#fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                }}
+              >
+                {modalConfig.icon}
+              </Box>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 700, color: '#1e293b', fontSize: '1.1rem' }}>
+                  {modalConfig.title} ({modalItems.length})
+                </Typography>
+                <Typography variant="caption" sx={{ color: '#64748b' }}>
+                  {modalConfig.description}
+                </Typography>
+              </Box>
+            </Box>
+            <IconButton onClick={() => setModalOpen(false)} size="small" sx={{ color: '#94a3b8' }}>
+              <Close />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+
+        <DialogContent sx={{ p: 0 }}>
+          {modalLoading ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 8 }}>
+              <CircularProgress size={36} color="primary" />
+              <Typography variant="caption" sx={{ mt: 2, color: '#64748b' }}>Loading marked transactions...</Typography>
+            </Box>
+          ) : modalItems.length === 0 ? (
+            <Box sx={{ p: 6, textAlign: 'center' }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, color: '#475569' }}>
+                No transactions found
+              </Typography>
+              <Typography variant="caption" sx={{ color: '#94a3b8' }}>
+                There are currently no transactions marked with this status in the database.
+              </Typography>
+            </Box>
+          ) : (
+            <TableContainer sx={{ maxHeight: 480 }}>
+              <Table stickyHeader size="small">
+                <TableHead>
+                  <TableRow sx={{ '& th': { bgcolor: '#f1f5f9', fontWeight: 700, fontSize: '0.78rem', color: '#475569' } }}>
+                    <TableCell>ID</TableCell>
+                    <TableCell>Vendor</TableCell>
+                    <TableCell>Invoice #</TableCell>
+                    <TableCell align="right">Amount</TableCell>
+                    <TableCell>Date</TableCell>
+                    <TableCell>Risk Score</TableCell>
+                    <TableCell>Primary Trigger</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell align="center">Action</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {modalItems.map((row) => (
+                    <TableRow key={row.id} hover sx={{ '&:last-child td': { border: 0 } }}>
+                      <TableCell sx={{ fontSize: '0.8rem', fontWeight: 600, color: '#64748b' }}>
+                        #{row.id}
+                      </TableCell>
+                      <TableCell sx={{ fontSize: '0.82rem', fontWeight: 700, color: '#1e293b' }}>
+                        {row.vendor}
+                      </TableCell>
+                      <TableCell sx={{ fontSize: '0.8rem', color: '#475569', fontFamily: 'monospace' }}>
+                        {row.invoice_number}
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontSize: '0.82rem', fontWeight: 700, color: '#0f172a' }}>
+                        {formatCurrency(row.amount, row.currency)}
+                      </TableCell>
+                      <TableCell sx={{ fontSize: '0.8rem', color: '#64748b' }}>
+                        {row.date || '—'}
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={`${Math.round((row.ensemble_score ?? 0) * 100)}%`}
+                          size="small"
+                          sx={{
+                            fontWeight: 700,
+                            fontSize: '0.72rem',
+                            bgcolor: (row.ensemble_score ?? 0) >= 0.75 ? '#fee2e2' : (row.ensemble_score ?? 0) >= 0.5 ? '#fef3c7' : '#e0f2fe',
+                            color: (row.ensemble_score ?? 0) >= 0.75 ? '#dc2626' : (row.ensemble_score ?? 0) >= 0.5 ? '#d97706' : '#0284c7',
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell sx={{ fontSize: '0.78rem', color: '#475569', maxWidth: 200 }}>
+                        {row.reasons && row.reasons[0] ? (
+                          <Tooltip title={row.reasons.map(r => r.label || r.code).join(' · ')}>
+                            <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {formatReasonLabel(row.reasons[0].label || row.reasons[0].code)}
+                              {row.reasons.length > 1 && ` (+${row.reasons.length - 1})`}
+                            </Typography>
+                          </Tooltip>
+                        ) : '—'}
+                      </TableCell>
+                      <TableCell>
+                        <StatusChip status={row.status} />
+                      </TableCell>
+                      <TableCell align="center">
+                        <FormControl size="small" sx={{ minWidth: 120 }}>
+                          <Select
+                            value={row.status}
+                            disabled={modalUpdatingId === row.id}
+                            onChange={(e) => handleStatusChangeInModal(row.id, e.target.value)}
+                            sx={{ fontSize: '0.75rem', height: 28 }}
+                          >
+                            <MenuItem value="confirmed" sx={{ fontSize: '0.75rem' }}>Confirmed</MenuItem>
+                            <MenuItem value="false_positive" sx={{ fontSize: '0.75rem' }}>False Positive</MenuItem>
+                            <MenuItem value="needs_review" sx={{ fontSize: '0.75rem' }}>Needs Review</MenuItem>
+                            <MenuItem value="unreviewed" sx={{ fontSize: '0.75rem' }}>Unreviewed</MenuItem>
+                          </Select>
+                        </FormControl>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </DialogContent>
+
+        <DialogActions sx={{ px: 2.5, py: 1.5, bgcolor: '#f8fafc', borderTop: '1px solid #e2e8f0', justifyContent: 'space-between' }}>
+          <Button
+            size="small"
+            variant="outlined"
+            component={Link}
+            to={modalConfig.filterParam ? `/ledger?status=${modalConfig.filterParam}` : '/ledger'}
+            onClick={() => setModalOpen(false)}
+            endIcon={<OpenInNew sx={{ fontSize: 14 }} />}
+            sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.8rem' }}
+          >
+            Open in Full Exceptions Table
+          </Button>
+          <Button
+            size="small"
+            onClick={() => setModalOpen(false)}
+            sx={{ textTransform: 'none', fontWeight: 600, color: '#64748b' }}
+          >
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }

@@ -4,20 +4,21 @@ import {
   FormControl, InputLabel, Select, MenuItem, OutlinedInput, Chip,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Paper, IconButton, Collapse, Divider, LinearProgress, CircularProgress,
-  Button, Tooltip, Stack, Alert, Slide,
+  Button, Tooltip, Stack, Alert, Slide, Pagination,
+  ToggleButton, ToggleButtonGroup,
 } from '@mui/material'
-import { Download, KeyboardArrowDown, KeyboardArrowUp, Search } from '@mui/icons-material'
+import { Download, KeyboardArrowDown, KeyboardArrowUp, Search, Assessment, Security } from '@mui/icons-material'
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
   Tooltip as RTooltip, CartesianGrid, Cell,
   ScatterChart, Scatter, Label, ReferenceLine,
 } from 'recharts'
 
-import { getLedgerExceptions, getBenfordAnalysis, updateExceptionStatus } from '../api/client'
-import { Link } from 'react-router-dom'
+import { getLedgerExceptions, getBenfordAnalysis, updateExceptionStatus, getSummaryStats } from '../api/client'
+import { Link, useSearchParams } from 'react-router-dom'
 import { StatusChip, SeverityChip } from '../components/StatusChip'
 import ChartCard, { WhiteChartCard } from '../components/ChartCard'
-import { formatCurrency } from '../utils/formatters'
+import { formatCurrency, formatCompactCurrency } from '../utils/formatters'
 import { DEFAULTS, THRESHOLDS } from '../config/constants'
 
 function DarkTooltip({ active, payload, label }) {
@@ -39,15 +40,33 @@ function LedgerScatterTooltip({ active, payload }) {
   if (!active || !payload?.length) return null
   const d = payload[0]?.payload
   if (!d) return null
+  const score = d.ensemble_score ?? 0
+  const scoreColor = score >= THRESHOLDS.CRITICAL_RISK ? '#d32f2f' : score >= THRESHOLDS.MEDIUM_RISK ? '#f57c00' : '#1976d2'
+  const riskTier = score >= THRESHOLDS.CRITICAL_RISK ? 'Critical Risk' : score >= THRESHOLDS.MEDIUM_RISK ? 'High Risk' : 'Moderate / Low'
+
   return (
-    <Box sx={{ bgcolor: '#fff', border: '1px solid #eee', borderRadius: 2, p: 1.5, boxShadow: 2, fontSize: '0.78rem' }}>
-      <Typography variant="caption" fontWeight={700} display="block">{d.vendor}</Typography>
-      <Typography variant="caption" display="block" color="text.secondary">Inv: {d.invoice_number} · Date: {d.date}</Typography>
-      <Box sx={{ mt: 0.5 }}>
-        <span style={{ color: '#3c4858', fontWeight: 700 }}>Amount: {formatCurrency(d.amount, d.currency)}</span>
+    <Box sx={{ bgcolor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 2, p: 1.5, boxShadow: '0 6px 18px rgba(0,0,0,0.12)', fontSize: '0.78rem', minWidth: 210 }}>
+      <Typography variant="caption" fontWeight={700} sx={{ color: '#0f172a', fontSize: '0.84rem', display: 'block' }}>
+        {d.vendor}
+      </Typography>
+      <Typography variant="caption" sx={{ color: '#64748b', display: 'block', mb: 0.8 }}>
+        Invoice #{d.invoice_number} · {d.date || 'N/A'}
+      </Typography>
+      <Divider sx={{ my: 0.8, borderColor: '#f1f5f9' }} />
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.4 }}>
+        <Typography variant="caption" sx={{ color: '#64748b' }}>Invoice Amount:</Typography>
+        <Typography variant="caption" sx={{ fontWeight: 700, color: '#0f172a' }}>
+          {formatCurrency(d.rawAmount ?? d.amount, d.currency || DEFAULTS.CURRENCY)}
+        </Typography>
       </Box>
-      <Box>
-        <span style={{ color: '#9c27b0', fontWeight: 700 }}>Ensemble Risk: {((d.ensemble_score ?? 0) * 100).toFixed(1)}%</span>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Typography variant="caption" sx={{ color: '#64748b' }}>Risk Score:</Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6 }}>
+          <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: scoreColor }} />
+          <Typography variant="caption" sx={{ fontWeight: 700, color: scoreColor }}>
+            {(score * 100).toFixed(1)}% ({riskTier})
+          </Typography>
+        </Box>
       </Box>
     </Box>
   )
@@ -119,27 +138,38 @@ function ExceptionRow({ ex, onStatusSave }) {
                   <Typography variant="caption" sx={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#999', mb: 1, display: 'block' }}>
                     Why Flagged
                   </Typography>
-                  <Grid container spacing={1}>
+                  <Grid container spacing={1} alignItems="stretch">
                     {ex.reasons.map(rc => (
-                      <Grid item key={rc.code} xs={6} sm={4} md={3}>
-                        <Box sx={{ bgcolor: '#fff', border: '1px solid #eee', borderRadius: 2, p: 1.25 }}>
-                          <Typography variant="caption" sx={{ color: '#999', display: 'block', mb: 0.5, fontSize: '0.7rem' }}>
+                      <Grid item key={rc.code} xs={6} sm={4} md={3} sx={{ display: 'flex' }}>
+                        <Box sx={{
+                          bgcolor: '#fff',
+                          border: '1px solid #eee',
+                          borderRadius: 2,
+                          p: 1.25,
+                          width: '100%',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between',
+                        }}>
+                          <Typography variant="caption" sx={{ color: '#64748b', display: 'block', mb: 1, fontSize: '0.72rem', lineHeight: 1.35 }}>
                             {rc.label}
                           </Typography>
-                          <Typography variant="body2" sx={{ fontWeight: 700, color: (rc.weight ?? 0) > 0.7 ? '#d32f2f' : (rc.weight ?? 0) > 0.4 ? '#f57c00' : '#1976d2', fontSize: '0.95rem' }}>
-                            {(rc.weight ?? 0).toFixed(2)}
-                          </Typography>
-                          <LinearProgress
-                            variant="determinate"
-                            value={(rc.weight ?? 0) * 100}
-                            sx={{
-                              height: 3, borderRadius: 2, mt: 0.5,
-                              bgcolor: '#f5f5f5',
-                              '& .MuiLinearProgress-bar': {
-                                bgcolor: (rc.weight ?? 0) > 0.7 ? '#d32f2f' : (rc.weight ?? 0) > 0.4 ? '#f57c00' : '#1976d2',
-                              },
-                            }}
-                          />
+                          <Box sx={{ mt: 'auto', pt: 0.5 }}>
+                            <Typography variant="body2" sx={{ fontWeight: 700, color: (rc.weight ?? 0) > 0.7 ? '#d32f2f' : (rc.weight ?? 0) > 0.4 ? '#f57c00' : '#1976d2', fontSize: '0.95rem' }}>
+                              {(rc.weight ?? 0).toFixed(2)}
+                            </Typography>
+                            <LinearProgress
+                              variant="determinate"
+                              value={(rc.weight ?? 0) * 100}
+                              sx={{
+                                height: 3, borderRadius: 2, mt: 0.5,
+                                bgcolor: '#f5f5f5',
+                                '& .MuiLinearProgress-bar': {
+                                  bgcolor: (rc.weight ?? 0) > 0.7 ? '#d32f2f' : (rc.weight ?? 0) > 0.4 ? '#f57c00' : '#1976d2',
+                                },
+                              }}
+                            />
+                          </Box>
                         </Box>
                       </Grid>
                     ))}
@@ -186,33 +216,57 @@ function ExceptionRow({ ex, onStatusSave }) {
 }
 
 export default function LedgerExceptions() {
+  const [searchParams] = useSearchParams()
+  const initialStatus = searchParams.get('status')
+  const initialThreshold = searchParams.get('threshold') ? parseFloat(searchParams.get('threshold')) : 0.0
+
   const [exceptions, setExceptions] = useState([])
-  const [threshold,  setThreshold]  = useState(0.5)
+  const [threshold,  setThreshold]  = useState(initialThreshold)
   const [benford,    setBenford]     = useState(null)
   const [loading,    setLoading]     = useState(true)
   const [sortBy,     setSortBy]      = useState('score_desc')
-  const [statusFilter, setStatusFilter] = useState([])
+  const [statusFilter, setStatusFilter] = useState(initialStatus ? [initialStatus] : [])
   const [search,     setSearch]      = useState('')
   const [useLogScale, setUseLogScale] = useState(false)
   const [showBanner, setShowBanner] = useState(false)
+  const [totalDbExceptions, setTotalDbExceptions] = useState(null)
+  const [totalFilteredExceptions, setTotalFilteredExceptions] = useState(null)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(100)
 
-  const [debouncedThreshold, setDebouncedThreshold] = useState(0.5)
+  const [debouncedThreshold, setDebouncedThreshold] = useState(initialThreshold)
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedThreshold(threshold), 400)
+    const timer = setTimeout(() => {
+      setDebouncedThreshold(threshold)
+      setPage(1)
+    }, 400)
     return () => clearTimeout(timer)
   }, [threshold])
 
   useEffect(() => {
     let mounted = true
     setLoading(true)
-    Promise.all([getLedgerExceptions(debouncedThreshold), getBenfordAnalysis('ledger')]).then(([ex, b]) => {
-      if (mounted) { setExceptions(ex); setBenford(b); setLoading(false) }
+    const offset = (page - 1) * pageSize
+    const activeStatus = statusFilter.length === 1 ? statusFilter[0] : null
+    Promise.all([
+      getLedgerExceptions(debouncedThreshold, pageSize, offset, sortBy, activeStatus),
+      getBenfordAnalysis('ledger'),
+      getSummaryStats()
+    ]).then(([ex, b, s]) => {
+      if (mounted) {
+        setExceptions(ex)
+        setBenford(b)
+        const dbTotal = s?.ledger_exceptions ?? 0
+        setTotalDbExceptions(dbTotal)
+        setTotalFilteredExceptions(ex.total != null ? ex.total : dbTotal)
+        setLoading(false)
+      }
     }).catch(() => {
       if (mounted) setLoading(false)
     })
     return () => { mounted = false }
-  }, [debouncedThreshold])
+  }, [debouncedThreshold, page, pageSize, sortBy, statusFilter])
 
   useEffect(() => {
     if (!loading && exceptions.length === 0) {
@@ -230,46 +284,11 @@ export default function LedgerExceptions() {
       const t = search.toLowerCase()
       list = list.filter(e => e.vendor?.toLowerCase().includes(t) || e.invoice_number?.toLowerCase().includes(t))
     }
-    
-    // Multi-column sorting
-    switch (sortBy) {
-      case 'score_desc':
-        list.sort((a, b) => (b.ensemble_score ?? 0) - (a.ensemble_score ?? 0))
-        break
-      case 'score_asc':
-        list.sort((a, b) => (a.ensemble_score ?? 0) - (b.ensemble_score ?? 0))
-        break
-      case 'amount_desc':
-        list.sort((a, b) => (b.amount ?? 0) - (a.amount ?? 0))
-        break
-      case 'amount_asc':
-        list.sort((a, b) => (a.amount ?? 0) - (b.amount ?? 0))
-        break
-      case 'date_desc':
-        list.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
-        break
-      case 'date_asc':
-        list.sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))
-        break
-      case 'vendor_asc':
-        list.sort((a, b) => (a.vendor ?? '').localeCompare(b.vendor ?? ''))
-        break
-      case 'vendor_desc':
-        list.sort((a, b) => (b.vendor ?? '').localeCompare(a.vendor ?? ''))
-        break
-      case 'invoice_asc':
-        list.sort((a, b) => (a.invoice_number ?? '').localeCompare(b.invoice_number ?? ''))
-        break
-      case 'invoice_desc':
-        list.sort((a, b) => (b.invoice_number ?? '').localeCompare(a.invoice_number ?? ''))
-        break
-      default:
-        list.sort((a, b) => (b.ensemble_score ?? 0) - (a.ensemble_score ?? 0))
-    }
     return list
-  }, [exceptions, statusFilter, search, sortBy])
+  }, [exceptions, statusFilter, search])
 
   const handleHeaderSort = (columnKey) => {
+    setPage(1)
     if (sortBy === `${columnKey}_desc`) {
       setSortBy(`${columnKey}_asc`)
     } else {
@@ -290,19 +309,66 @@ export default function LedgerExceptions() {
     return { range: `${(min * 100).toFixed(0)}–${(max * 100).toFixed(0)}`, count: exceptions.filter(e => e.ensemble_score >= min && e.ensemble_score < max).length }
   })
 
-  const scatterData = useMemo(() => {
-    return filtered.map((e, idx) => {
-      const amt = Math.max(0.1, Number(e.amount) || 0)
-      const yVal = useLogScale ? Math.log10(amt) : amt
-      return {
-        ...e,
-        x: e.ensemble_score,
-        y: yVal,
-        rawAmount: amt,
-        z: (e.ensemble_score ?? 0) * 12 + 4,
+  const { scatterData, scatterYDomain, scatterYTicks } = useMemo(() => {
+    if (!filtered || filtered.length === 0) {
+      return { scatterData: [], scatterYDomain: [0, 100], scatterYTicks: [0, 50, 100] }
+    }
+
+    const amounts = filtered.map(e => Math.max(1, Number(e.amount) || 0))
+    const minAmt = Math.min(...amounts)
+    const maxAmt = Math.max(...amounts)
+
+    if (useLogScale) {
+      const minExp = Math.max(0, Math.floor(Math.log10(minAmt)))
+      const maxExp = Math.max(minExp + 1, Math.ceil(Math.log10(maxAmt)))
+
+      const ticks = []
+      for (let exp = minExp; exp <= maxExp; exp++) {
+        ticks.push(exp)
       }
-    })
+
+      const data = filtered.map(e => {
+        const amt = Math.max(1, Number(e.amount) || 0)
+        return {
+          ...e,
+          x: Number(e.ensemble_score) || 0,
+          y: Math.log10(amt),
+          rawAmount: amt,
+        }
+      })
+
+      return {
+        scatterData: data,
+        scatterYDomain: [minExp, maxExp],
+        scatterYTicks: ticks,
+      }
+    } else {
+      const padMax = maxAmt > 0 ? Math.ceil((maxAmt * 1.08) / 1000) * 1000 : 10000
+      const data = filtered.map(e => {
+        const amt = Math.max(0, Number(e.amount) || 0)
+        return {
+          ...e,
+          x: Number(e.ensemble_score) || 0,
+          y: amt,
+          rawAmount: amt,
+        }
+      })
+
+      return {
+        scatterData: data,
+        scatterYDomain: [0, padMax],
+        scatterYTicks: undefined,
+      }
+    }
   }, [filtered, useLogScale])
+
+  const formatYTick = (v) => {
+    if (useLogScale) {
+      const amt = Math.round(Math.pow(10, v))
+      return formatCompactCurrency(amt, DEFAULTS.CURRENCY)
+    }
+    return formatCompactCurrency(v, DEFAULTS.CURRENCY)
+  }
 
   const handleExport = () => {
     const esc = s => `"${String(s || '').replace(/"/g, '""')}"`
@@ -354,18 +420,26 @@ export default function LedgerExceptions() {
             color="linear-gradient(195deg, #66BB6A, #388E3C)"
             shadow="0 4px 20px 0 rgba(0,0,0,.14),0 7px 10px -5px rgba(76,175,80,.4)"
             title="Benford's Law — Leading Digit Distribution"
-            subtitle={benford ? `MAD: ${benford.mad.toFixed(4)} · p-value: ${benford.chi2_p.toFixed(3)} ${benford.chi2_p < 0.05 ? 'Suspicious' : 'Normal'}` : ''}
-            footer="Red deviation flags potential manipulation"
+            subtitle={benford ? `MAD: ${benford.mad.toFixed(4)} · p-value: ${benford.chi2_p < 0.001 ? '< 0.001' : benford.chi2_p.toFixed(3)} (${benford.chi2_p < 0.05 ? 'Suspicious' : 'Normal'})` : 'Awaiting data'}
+            footer={benford ? (benford.chi2_p < 0.05 ? "Significant deviation flags potential manipulation (p < 0.05)" : "Conforms to standard Benford distribution") : "Upload data to generate analysis"}
             headerHeight={200}
           >
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={benfordData} margin={{ top: 12, right: 12, left: -20, bottom: 0 }}>
-                <Bar dataKey="Expected" fill="rgba(255,255,255,0.3)" radius={[2, 2, 0, 0]} />
-                <Bar dataKey="Observed" fill="rgba(255,255,255,0.9)" radius={[2, 2, 0, 0]} />
-                <XAxis dataKey="digit" tick={{ fill: '#fff', fontSize: 11 }} axisLine={false} tickLine={false} />
-                <RTooltip content={<DarkTooltip />} />
-              </BarChart>
-            </ResponsiveContainer>
+            {benford && benfordData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={benfordData} margin={{ top: 12, right: 12, left: 0, bottom: 0 }}>
+                  <Bar dataKey="Expected" fill="rgba(255,255,255,0.3)" radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="Observed" fill="rgba(255,255,255,0.9)" radius={[2, 2, 0, 0]} />
+                  <XAxis dataKey="digit" tick={{ fill: '#fff', fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <RTooltip content={<DarkTooltip />} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'rgba(255,255,255,0.7)' }}>
+                <Assessment sx={{ fontSize: 40, mb: 1, opacity: 0.5 }} />
+                <Typography variant="caption" sx={{ fontWeight: 600 }}>No data available</Typography>
+                <Typography variant="caption" sx={{ opacity: 0.6, fontSize: '0.65rem' }}>Upload a CSV to view chart</Typography>
+              </Box>
+            )}
           </ChartCard>
         </Grid>
         <Grid item xs={12} md={7}>
@@ -373,17 +447,33 @@ export default function LedgerExceptions() {
             color="linear-gradient(195deg, #EF5350, #C62828)"
             shadow="0 4px 20px 0 rgba(0,0,0,.14),0 7px 10px -5px rgba(244,67,54,.4)"
             title="Score Distribution"
-            subtitle={`${filtered.filter(e => e.ensemble_score >= threshold).length} exceptions above threshold ${threshold.toFixed(2)}`}
-            footer={`Threshold: ${threshold.toFixed(2)}`}
+            subtitle={
+              totalFilteredExceptions != null
+                ? `${totalFilteredExceptions.toLocaleString()} exceptions ${threshold > 0 ? `above threshold ${threshold.toFixed(2)}` : 'across all risk tiers'}${totalDbExceptions ? ` (${totalDbExceptions.toLocaleString()} total in database)` : ''}`
+                : 'Awaiting data'
+            }
+            footer={
+              threshold > 0
+                ? `Filtered at threshold: ${threshold.toFixed(2)} · Showing ${totalFilteredExceptions?.toLocaleString() ?? 0} of ${totalDbExceptions?.toLocaleString() ?? 0}`
+                : `Showing all ${totalDbExceptions ? totalDbExceptions.toLocaleString() : '5,300'} exceptions in database`
+            }
             headerHeight={200}
           >
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={scoreData} margin={{ top: 12, right: 12, left: -20, bottom: 0 }}>
-                <Bar dataKey="count" fill="rgba(255,255,255,0.85)" radius={[2, 2, 0, 0]} />
-                <XAxis dataKey="range" tick={{ fill: '#fff', fontSize: 9 }} axisLine={false} tickLine={false} />
-                <RTooltip content={<DarkTooltip />} />
-              </BarChart>
-            </ResponsiveContainer>
+            {exceptions.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={scoreData} margin={{ top: 12, right: 12, left: 0, bottom: 0 }}>
+                  <Bar dataKey="count" fill="rgba(255,255,255,0.85)" radius={[2, 2, 0, 0]} />
+                  <XAxis dataKey="range" tick={{ fill: '#fff', fontSize: 9 }} axisLine={false} tickLine={false} />
+                  <RTooltip content={<DarkTooltip />} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'rgba(255,255,255,0.7)' }}>
+                <Security sx={{ fontSize: 40, mb: 1, opacity: 0.5 }} />
+                <Typography variant="caption" sx={{ fontWeight: 600 }}>No exceptions</Typography>
+                <Typography variant="caption" sx={{ opacity: 0.6, fontSize: '0.65rem' }}>Upload data first</Typography>
+              </Box>
+            )}
           </ChartCard>
         </Grid>
       </Grid>
@@ -393,78 +483,130 @@ export default function LedgerExceptions() {
         <WhiteChartCard
           title="Exceptions Spotlight — Transaction Amount vs Risk Score"
           subtitle="Interactive scatter matrix: X-axis shows AI risk probability (0–100%), Y-axis displays invoice amount. High risk & high value entries (top-right) require immediate audit sampling."
-          footer="Critical (≥ 80%) · High Risk (50%–79%) · Moderate/Low (< 50%)"
-          height={320}
+          footer={
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+              <Stack direction="row" spacing={3} alignItems="center" flexWrap="wrap">
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
+                  <Box sx={{ width: 9, height: 9, borderRadius: '50%', bgcolor: '#d32f2f' }} />
+                  <Typography variant="caption" sx={{ fontWeight: 600, color: '#334155' }}>Critical Risk (≥ 80%)</Typography>
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
+                  <Box sx={{ width: 9, height: 9, borderRadius: '50%', bgcolor: '#f57c00' }} />
+                  <Typography variant="caption" sx={{ fontWeight: 600, color: '#334155' }}>High Risk (50%–79%)</Typography>
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
+                  <Box sx={{ width: 9, height: 9, borderRadius: '50%', bgcolor: '#1976d2' }} />
+                  <Typography variant="caption" sx={{ fontWeight: 600, color: '#334155' }}>Moderate / Low (&lt; 50%)</Typography>
+                </Box>
+              </Stack>
+              <Typography variant="caption" sx={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.72rem' }}>
+                Tip: Click any point to filter the ledger table below
+              </Typography>
+            </Box>
+          }
+          height={350}
         >
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1, px: 2 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5, px: 1, flexWrap: 'wrap', gap: 1 }}>
+            <Typography variant="caption" sx={{ color: '#64748b', fontSize: '0.8rem', fontWeight: 500 }}>
+              Displaying <strong>{scatterData.length}</strong> flagged transactions in spotlight
+            </Typography>
             <Stack direction="row" spacing={1} alignItems="center">
-              <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 600 }}>
+              <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 600, fontSize: '0.75rem' }}>
                 Y-Axis Scale:
               </Typography>
-              <Button
+              <ToggleButtonGroup
                 size="small"
-                variant={!useLogScale ? "contained" : "outlined"}
-                onClick={() => setUseLogScale(false)}
-                sx={{ py: 0.2, px: 1.5, fontSize: '0.7rem', textTransform: 'none', borderRadius: 1.5 }}
+                value={useLogScale ? 'log' : 'linear'}
+                exclusive
+                onChange={(e, val) => { if (val !== null) setUseLogScale(val === 'log') }}
+                sx={{
+                  height: 28,
+                  '& .MuiToggleButton-root': {
+                    px: 1.5,
+                    py: 0.2,
+                    fontSize: '0.72rem',
+                    textTransform: 'none',
+                    fontWeight: 600,
+                    borderColor: '#e2e8f0',
+                    '&.Mui-selected': {
+                      bgcolor: '#4338ca',
+                      color: '#ffffff',
+                      '&:hover': { bgcolor: '#3730a3' },
+                    },
+                  },
+                }}
               >
-                Linear
-              </Button>
-              <Button
-                size="small"
-                variant={useLogScale ? "contained" : "outlined"}
-                onClick={() => setUseLogScale(true)}
-                color="secondary"
-                sx={{ py: 0.2, px: 1.5, fontSize: '0.7rem', textTransform: 'none', borderRadius: 1.5 }}
-              >
-                Balanced Log Scale (Spread Low Amounts)
-              </Button>
+                <ToggleButton value="linear">Linear</ToggleButton>
+                <ToggleButton value="log">Logarithmic</ToggleButton>
+              </ToggleButtonGroup>
             </Stack>
           </Box>
-          <ResponsiveContainer width="100%" height={260}>
-            <ScatterChart margin={{ top: 20, right: 25, left: 15, bottom: 25 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-              <XAxis
-                type="number"
-                dataKey="x"
-                name="Risk Score"
-                domain={[0, 1]}
-                tickFormatter={v => `${(v*100).toFixed(0)}%`}
-                tick={{ fill: '#64748b', fontSize: 10 }}
-                stroke="#cbd5e1"
-              >
-                <Label value="Ensemble Risk Score →" position="bottom" offset={8} style={{ fill: '#334155', fontSize: 11, fontWeight: 600 }} />
-              </XAxis>
-              <YAxis
-                type="number"
-                dataKey="y"
-                name="Amount"
-                tickFormatter={v => useLogScale ? `10^${v.toFixed(1)} (${formatCurrency(Math.round(Math.pow(10, v)), DEFAULTS.CURRENCY)})` : formatCurrency(v, DEFAULTS.CURRENCY)}
-                tick={{ fill: '#64748b', fontSize: 10 }}
-                stroke="#cbd5e1"
-              >
-                <Label
-                  value={useLogScale ? "Invoice Amount (Log Scale)" : "Invoice Amount (Linear)"}
-                  angle={-90}
-                  position="insideLeft"
-                  offset={-5}
-                  style={{ fill: '#334155', fontSize: 11, fontWeight: 600 }}
-                />
-              </YAxis>
-              <ReferenceLine x={THRESHOLDS.CRITICAL_RISK} stroke="#d32f2f" strokeDasharray="4 4" strokeWidth={1.5} label={{ value: `Critical (${THRESHOLDS.CRITICAL_RISK * 100}%)`, position: "top", fill: "#d32f2f", fontSize: 10, fontWeight: 700 }} />
-              <ReferenceLine x={THRESHOLDS.MEDIUM_RISK} stroke="#f57c00" strokeDasharray="4 4" strokeWidth={1.5} label={{ value: `High (${THRESHOLDS.MEDIUM_RISK * 100}%)`, position: "top", fill: "#f57c00", fontSize: 10, fontWeight: 700 }} />
-              <RTooltip content={<LedgerScatterTooltip />} />
-              <Scatter data={scatterData} shape="circle">
-                {scatterData.map((entry, i) => (
-                  <Cell
-                    key={i}
-                    fill={(entry.ensemble_score ?? 0) >= THRESHOLDS.CRITICAL_RISK ? '#d32f2f' : (entry.ensemble_score ?? 0) >= THRESHOLDS.HIGH_RISK ? '#f57c00' : '#1976d2'}
-                    fillOpacity={0.85}
-                    r={entry.z}
+          {exceptions.length > 0 ? (
+            <ResponsiveContainer width="100%" height={280}>
+              <ScatterChart margin={{ top: 25, right: 30, left: 25, bottom: 35 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis
+                  type="number"
+                  dataKey="x"
+                  name="Risk Score"
+                  domain={[0, 1]}
+                  ticks={[0, 0.25, 0.5, 0.75, 1.0]}
+                  tickFormatter={v => `${(v*100).toFixed(0)}%`}
+                  tick={{ fill: '#64748b', fontSize: 11 }}
+                  stroke="#cbd5e1"
+                >
+                  <Label value="Ensemble Risk Score →" position="bottom" offset={12} style={{ fill: '#475569', fontSize: 11, fontWeight: 600 }} />
+                </XAxis>
+                <YAxis
+                  type="number"
+                  dataKey="y"
+                  name="Amount"
+                  domain={scatterYDomain}
+                  ticks={scatterYTicks}
+                  width={80}
+                  tickFormatter={formatYTick}
+                  tick={{ fill: '#64748b', fontSize: 11 }}
+                  stroke="#cbd5e1"
+                >
+                  <Label
+                    value={useLogScale ? "Invoice Amount (Log Scale)" : "Invoice Amount"}
+                    angle={-90}
+                    position="insideLeft"
+                    offset={12}
+                    style={{ textAnchor: 'middle', fill: '#475569', fontSize: 11, fontWeight: 600 }}
                   />
-                ))}
-              </Scatter>
-            </ScatterChart>
-          </ResponsiveContainer>
+                </YAxis>
+                <ReferenceLine x={THRESHOLDS.CRITICAL_RISK} stroke="#d32f2f" strokeDasharray="4 4" strokeWidth={1.5} label={{ value: `Critical (${THRESHOLDS.CRITICAL_RISK * 100}%)`, position: "top", fill: "#d32f2f", fontSize: 10, fontWeight: 700 }} />
+                <ReferenceLine x={THRESHOLDS.MEDIUM_RISK} stroke="#f57c00" strokeDasharray="4 4" strokeWidth={1.5} label={{ value: `High (${THRESHOLDS.MEDIUM_RISK * 100}%)`, position: "top", fill: "#f57c00", fontSize: 10, fontWeight: 700 }} />
+                <RTooltip content={<LedgerScatterTooltip />} />
+                <Scatter
+                  data={scatterData}
+                  shape="circle"
+                  cursor="pointer"
+                  onClick={(entry) => {
+                    if (entry?.invoice_number) setSearch(entry.invoice_number)
+                  }}
+                >
+                  {scatterData.map((entry, i) => (
+                    <Cell
+                      key={i}
+                      fill={(entry.ensemble_score ?? 0) >= THRESHOLDS.CRITICAL_RISK ? '#d32f2f' : (entry.ensemble_score ?? 0) >= THRESHOLDS.MEDIUM_RISK ? '#f57c00' : '#1976d2'}
+                      fillOpacity={0.75}
+                      stroke="#ffffff"
+                      strokeWidth={1}
+                      r={Math.max(4.5, Math.min(8.5, (entry.ensemble_score ?? 0) * 8))}
+                    />
+                  ))}
+                </Scatter>
+              </ScatterChart>
+            </ResponsiveContainer>
+          ) : (
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 280, color: '#ccc' }}>
+              <Assessment sx={{ fontSize: 48, mb: 1, opacity: 0.4 }} />
+              <Typography variant="body2" sx={{ fontWeight: 600, color: '#999' }}>No exceptions to display</Typography>
+              <Typography variant="caption" sx={{ color: '#bbb', fontSize: '0.75rem' }}>Upload a CSV ledger in Data Ingestion Portal to view risk vs amount scatter matrix</Typography>
+            </Box>
+          )}
         </WhiteChartCard>
       </Box>
 
@@ -477,8 +619,16 @@ export default function LedgerExceptions() {
               <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1rem' }}>
                 Ledger Exceptions
               </Typography>
-              <Typography variant="body2" sx={{ color: '#999', fontSize: '0.8rem' }}>
-                {filtered.length} of {exceptions.length} results shown · Click table headers or use dropdown to sort
+              <Typography variant="body2" sx={{ color: '#64748b', fontSize: '0.8rem' }}>
+                {(totalFilteredExceptions ?? totalDbExceptions) > 0 ? (
+                  threshold > 0 || statusFilter.length > 0 ? (
+                    <>Showing <strong>{Math.min((page - 1) * pageSize + 1, totalFilteredExceptions ?? totalDbExceptions)}–{Math.min((page - 1) * pageSize + filtered.length, totalFilteredExceptions ?? totalDbExceptions)}</strong> of <strong>{(totalFilteredExceptions ?? totalDbExceptions).toLocaleString()}</strong> filtered exceptions {totalDbExceptions ? <>(of <strong>{totalDbExceptions.toLocaleString()}</strong> total in database)</> : null} (Page {page} of {Math.max(1, Math.ceil((totalFilteredExceptions ?? totalDbExceptions) / pageSize))})</>
+                  ) : (
+                    <>Showing <strong>{Math.min((page - 1) * pageSize + 1, totalFilteredExceptions ?? totalDbExceptions)}–{Math.min((page - 1) * pageSize + filtered.length, totalFilteredExceptions ?? totalDbExceptions)}</strong> of <strong>{(totalFilteredExceptions ?? totalDbExceptions).toLocaleString()}</strong> total exceptions in database (Page {page} of {Math.max(1, Math.ceil((totalFilteredExceptions ?? totalDbExceptions) / pageSize))})</>
+                  )
+                ) : (
+                  <>Showing {filtered.length} exceptions</>
+                )} · Click table headers or use dropdown to sort
               </Typography>
             </Box>
             <Button variant="outlined" size="small" startIcon={<Download />} onClick={handleExport} sx={{ textTransform: 'none', fontSize: '0.8rem' }}>
@@ -490,9 +640,20 @@ export default function LedgerExceptions() {
           <Grid container spacing={2} sx={{ mb: 2 }}>
             <Grid item xs={12} sm={3}>
               <Box>
-                <Typography variant="caption" sx={{ fontWeight: 600, color: '#666', mb: 0.5, display: 'block' }}>
-                  Threshold: <strong style={{ color: '#3c4858' }}>{threshold.toFixed(2)}</strong>
-                </Typography>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="caption" sx={{ fontWeight: 600, color: '#666', display: 'block' }}>
+                    Risk Threshold: <strong style={{ color: '#3c4858' }}>{threshold > 0 ? `≥ ${threshold.toFixed(2)}` : 'All (0.00)'}</strong>
+                  </Typography>
+                  {threshold > 0 && (
+                    <Button
+                      size="small"
+                      onClick={() => setThreshold(0.0)}
+                      sx={{ p: 0, minWidth: 0, fontSize: '0.7rem', textTransform: 'none', color: '#6366f1', fontWeight: 600 }}
+                    >
+                      Show All {totalDbExceptions ? `(${totalDbExceptions.toLocaleString()})` : ''}
+                    </Button>
+                  )}
+                </Box>
                 <Slider
                   value={threshold}
                   onChange={(_, v) => setThreshold(v)}
@@ -519,7 +680,7 @@ export default function LedgerExceptions() {
                 <Select
                   multiple
                   value={statusFilter}
-                  onChange={e => setStatusFilter(e.target.value)}
+                  onChange={e => { setPage(1); setStatusFilter(e.target.value) }}
                   input={<OutlinedInput label="Filter Status" />}
                   renderValue={(sel) => sel.map(s => s.replace('_', ' ')).join(', ')}
                   sx={{ fontSize: '0.82rem' }}
@@ -535,7 +696,7 @@ export default function LedgerExceptions() {
             <Grid item xs={12} sm={3}>
               <FormControl size="small" fullWidth>
                 <InputLabel sx={{ fontSize: '0.82rem' }}>Sort By</InputLabel>
-                <Select value={sortBy} onChange={e => setSortBy(e.target.value)} label="Sort By" sx={{ fontSize: '0.82rem' }}>
+                <Select value={sortBy} onChange={e => { setSortBy(e.target.value); setPage(1); }} label="Sort By" sx={{ fontSize: '0.82rem' }}>
                   <MenuItem value="score_desc"  sx={{ fontSize: '0.82rem' }}>Score ↓ (Highest First)</MenuItem>
                   <MenuItem value="score_asc"   sx={{ fontSize: '0.82rem' }}>Score ↑ (Lowest First)</MenuItem>
                   <MenuItem value="amount_desc" sx={{ fontSize: '0.82rem' }}>Amount ↓ (Highest First)</MenuItem>
@@ -615,6 +776,41 @@ export default function LedgerExceptions() {
                 </TableBody>
               </Table>
             </TableContainer>
+          )}
+
+          {/* Server-side Pagination controls */}
+          {(totalFilteredExceptions ?? totalDbExceptions) > 0 && (
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: 2,
+                pt: 2.5,
+                pb: 1,
+                px: 1,
+                borderTop: '1px solid #f0f0f0',
+                mt: 1,
+              }}
+            >
+              <Typography variant="body2" sx={{ color: '#64748b', fontSize: '0.82rem', fontWeight: 500 }}>
+                Page <strong>{page}</strong> of <strong>{Math.max(1, Math.ceil((totalFilteredExceptions ?? totalDbExceptions) / pageSize))}</strong> · Showing <strong>{Math.min((page - 1) * pageSize + 1, (totalFilteredExceptions ?? totalDbExceptions))}–{Math.min((page - 1) * pageSize + filtered.length, (totalFilteredExceptions ?? totalDbExceptions))}</strong> of <strong>{(totalFilteredExceptions ?? totalDbExceptions).toLocaleString()}</strong> {threshold > 0 || statusFilter.length > 0 ? 'filtered ' : ''}exceptions {threshold > 0 || statusFilter.length > 0 ? (totalDbExceptions ? `(${totalDbExceptions.toLocaleString()} total in database)` : '') : ''}
+              </Typography>
+              <Pagination
+                count={Math.max(1, Math.ceil((totalFilteredExceptions ?? totalDbExceptions) / pageSize))}
+                page={page}
+                onChange={(_, newPage) => {
+                  setPage(newPage)
+                  window.scrollTo({ top: 380, behavior: 'smooth' })
+                }}
+                color="secondary"
+                shape="rounded"
+                showFirstButton
+                showLastButton
+                size="medium"
+              />
+            </Box>
           )}
         </CardContent>
       </Card>

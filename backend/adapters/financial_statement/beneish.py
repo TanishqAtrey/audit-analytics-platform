@@ -68,6 +68,32 @@ def _compute_variables(row: pd.Series) -> dict[str, float]:
     }
 
 
+def compute_beneish_metrics(row: pd.Series | dict) -> dict:
+    if pd.isna(row.get("revenue_prior")):
+        return {}
+
+    variables = _compute_variables(row)
+    if any(pd.isna(v) for v in variables.values()):
+        return {}
+
+    m_score = INTERCEPT + sum(COEFFICIENTS[k] * float(variables[k]) for k in COEFFICIENTS)
+    is_manipulator = bool(m_score > M_SCORE_THRESHOLD)
+
+    return {
+        "dsri": round(float(variables["DSRI"]), 4),
+        "gmi": round(float(variables["GMI"]), 4),
+        "aqi": round(float(variables["AQI"]), 4),
+        "sgi": round(float(variables["SGI"]), 4),
+        "depi": round(float(variables["DEPI"]), 4),
+        "sgai": round(float(variables["SGAI"]), 4),
+        "lvgi": round(float(variables["LVGI"]), 4),
+        "tata": round(float(variables["TATA"]), 4),
+        "m_score": round(float(m_score), 4),
+        "is_manipulator": is_manipulator,
+        "variables": {k: round(float(v), 4) for k, v in variables.items()},
+    }
+
+
 class BeneishMScoreTest(DetectionTest):
     name = "beneish_m_score"
     domain = "financial_statement"
@@ -77,18 +103,16 @@ class BeneishMScoreTest(DetectionTest):
         results = []
 
         for _, row in df.iterrows():
-            if pd.isna(row.get("revenue_prior")):
+            metrics = compute_beneish_metrics(row)
+            if not metrics:
                 continue
 
-            variables = _compute_variables(row)
-            if any(pd.isna(v) for v in variables.values()):
-                continue
-
-            m_score = INTERCEPT + sum(COEFFICIENTS[k] * float(variables[k]) for k in COEFFICIENTS)
+            m_score = metrics["m_score"]
             if m_score < threshold:
                 continue
 
             score = min(1.0, max(0.0, (m_score - threshold) / (abs(threshold) + 2.0)))
+            variables = metrics["variables"]
             top_drivers = sorted(
                 COEFFICIENTS,
                 key=lambda k: abs(COEFFICIENTS[k] * float(variables[k])),
@@ -103,6 +127,14 @@ class BeneishMScoreTest(DetectionTest):
                         "m_score": round(float(m_score), 3),
                         "top_drivers": top_drivers,
                         "variables": {k: round(float(v), 3) for k, v in variables.items()},
+                        "dsri": metrics["dsri"],
+                        "gmi": metrics["gmi"],
+                        "aqi": metrics["aqi"],
+                        "sgi": metrics["sgi"],
+                        "depi": metrics["depi"],
+                        "sgai": metrics["sgai"],
+                        "lvgi": metrics["lvgi"],
+                        "tata": metrics["tata"],
                     },
                 )
             )

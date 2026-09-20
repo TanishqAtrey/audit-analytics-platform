@@ -15,14 +15,29 @@ import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward'
  *   footer    – bottom text (last updated / source label)
  *   trend     – optional { value: '+12%', up: true }
  */
-export default function StatCard({ icon, iconColor, iconShadow, title, value, footer, trend }) {
+export default function StatCard({ icon, iconColor, iconShadow, title, value, footer, trend, onClick, sx = {} }) {
   return (
     <Card
+      onClick={onClick}
       sx={{
+        height: '100%',
+        minHeight: 140,
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
         borderRadius: '12px',
         boxShadow: '0 2px 12px 0 rgba(0,0,0,.08)',
         position: 'relative',
         overflow: 'visible',
+        cursor: onClick ? 'pointer' : 'default',
+        transition: onClick ? 'transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease' : 'none',
+        border: '1px solid transparent',
+        '&:hover': onClick ? {
+          transform: 'translateY(-3px)',
+          boxShadow: '0 8px 24px 0 rgba(0,0,0,.14)',
+          borderColor: '#cbd5e1',
+        } : {},
+        ...sx,
       }}
     >
       {/* Floating icon box */}
@@ -45,12 +60,12 @@ export default function StatCard({ icon, iconColor, iconShadow, title, value, fo
         {icon}
       </Box>
 
-      <CardContent sx={{ pt: 1, pb: '12px !important', pl: 2, pr: 2 }}>
+      <CardContent sx={{ pt: 1, pb: '12px !important', px: 2, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
         {/* Value + label (right-aligned, icon takes up left) */}
         <Box sx={{ textAlign: 'right', pt: 0.5 }}>
           <Typography
             variant="caption"
-            sx={{ color: '#999', fontWeight: 400, fontSize: '0.8rem', textTransform: 'none' }}
+            sx={{ color: '#999', fontWeight: 500, fontSize: '0.8rem', textTransform: 'none' }}
           >
             {title}
           </Typography>
@@ -62,23 +77,32 @@ export default function StatCard({ icon, iconColor, iconShadow, title, value, fo
           </Typography>
         </Box>
 
-        <Divider sx={{ my: 1.5 }} />
+        <Box sx={{ mt: 'auto' }}>
+          <Divider sx={{ my: 1.3 }} />
 
-        {/* Footer row */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          {trend && (
-            <Box sx={{ display: 'flex', alignItems: 'center', color: trend.up ? '#4caf50' : '#f44336' }}>
-              {trend.up
-                ? <ArrowUpwardIcon sx={{ fontSize: 14 }} />
-                : <ArrowDownwardIcon sx={{ fontSize: 14 }} />}
-              <Typography variant="caption" sx={{ fontWeight: 700, fontSize: '0.78rem' }}>
-                {trend.value}&nbsp;
+          {/* Footer row */}
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 0.5 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0, overflow: 'hidden' }}>
+              {trend && (
+                <Box sx={{ display: 'inline-flex', alignItems: 'center', color: trend.up ? '#4caf50' : '#f44336', flexShrink: 0 }}>
+                  {trend.up
+                    ? <ArrowUpwardIcon sx={{ fontSize: 13 }} />
+                    : <ArrowDownwardIcon sx={{ fontSize: 13 }} />}
+                  <Typography variant="caption" sx={{ fontWeight: 700, fontSize: '0.74rem' }}>
+                    {trend.value}&nbsp;
+                  </Typography>
+                </Box>
+              )}
+              <Typography variant="caption" sx={{ color: '#888', fontSize: '0.74rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {footer}
               </Typography>
             </Box>
-          )}
-          <Typography variant="caption" sx={{ color: '#999', fontSize: '0.78rem' }}>
-            {footer}
-          </Typography>
+            {onClick && (
+              <Typography variant="caption" sx={{ color: '#1976d2', fontWeight: 600, fontSize: '0.72rem', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                View Details →
+              </Typography>
+            )}
+          </Box>
         </Box>
       </CardContent>
     </Card>

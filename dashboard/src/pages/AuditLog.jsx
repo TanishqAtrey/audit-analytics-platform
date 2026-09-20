@@ -421,24 +421,32 @@ export default function AuditLog() {
           <WhiteChartCard
             title="Exceptions Found Timeline"
             subtitle="Anomaly detection count per operational run"
-            footer="Last 15 pipeline logs displayed"
+            footer={logRows.length > 0 ? "Last 15 pipeline logs displayed" : "Upload data to generate logs"}
             height={200}
           >
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData} margin={{ top: 12, right: 16, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="areaGradPink" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor="#e91e63" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="#e91e63" stopOpacity={0.01} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 10 }} stroke="#cbd5e1" />
-                <YAxis tick={{ fill: '#64748b', fontSize: 9 }} stroke="#cbd5e1" />
-                <RTooltip content={<DarkTooltip />} />
-                <Area type="monotone" dataKey="Exceptions" stroke="#e91e63" strokeWidth={2.5} fill="url(#areaGradPink)" />
-              </AreaChart>
-            </ResponsiveContainer>
+            {chartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData} margin={{ top: 12, right: 16, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="areaGradPink" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor="#e91e63" stopOpacity={0.2} />
+                      <stop offset="95%" stopColor="#e91e63" stopOpacity={0.01} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 10 }} stroke="#cbd5e1" />
+                  <YAxis tick={{ fill: '#64748b', fontSize: 9 }} stroke="#cbd5e1" />
+                  <RTooltip content={<DarkTooltip />} />
+                  <Area type="monotone" dataKey="Exceptions" stroke="#e91e63" strokeWidth={2.5} fill="url(#areaGradPink)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#ccc' }}>
+                <Assessment sx={{ fontSize: 40, mb: 1, opacity: 0.4 }} />
+                <Typography variant="caption" sx={{ fontWeight: 600, color: '#999' }}>No audit runs logged</Typography>
+                <Typography variant="caption" sx={{ color: '#bbb', fontSize: '0.65rem' }}>Upload data to record pipeline runs</Typography>
+              </Box>
+            )}
           </WhiteChartCard>
         </Grid>
 
@@ -446,18 +454,26 @@ export default function AuditLog() {
           <WhiteChartCard
             title="Module Executions Runtimes"
             subtitle="Latency measurement in milliseconds (ms)"
-            footer="Execution speed metrics"
+            footer={logRows.length > 0 ? "Execution speed metrics" : "Awaiting operational runs"}
             height={200}
           >
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} margin={{ top: 12, right: 16, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 10 }} stroke="#cbd5e1" />
-                <YAxis tick={{ fill: '#64748b', fontSize: 9 }} stroke="#cbd5e1" />
-                <RTooltip content={<DarkTooltip />} />
-                <Bar dataKey="Runtime (ms)" fill="#9c27b0" radius={[3, 3, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            {chartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData} margin={{ top: 12, right: 16, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 10 }} stroke="#cbd5e1" />
+                  <YAxis tick={{ fill: '#64748b', fontSize: 9 }} stroke="#cbd5e1" />
+                  <RTooltip content={<DarkTooltip />} />
+                  <Bar dataKey="Runtime (ms)" fill="#9c27b0" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#ccc' }}>
+                <ReceiptLong sx={{ fontSize: 40, mb: 1, opacity: 0.4 }} />
+                <Typography variant="caption" sx={{ fontWeight: 600, color: '#999' }}>No runtimes recorded</Typography>
+                <Typography variant="caption" sx={{ color: '#bbb', fontSize: '0.65rem' }}>Execution latency will display here</Typography>
+              </Box>
+            )}
           </WhiteChartCard>
         </Grid>
       </Grid>

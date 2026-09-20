@@ -27,17 +27,20 @@ def reshape_with_prior_year(raw_df: pd.DataFrame) -> pd.DataFrame:
         raise ValueError(f"Financial statement adapter: missing required columns {missing}")
 
     df = raw_df.sort_values(["ticker", "fiscal_year"]).copy()
+    if "ebit" not in df.columns:
+        df["ebit"] = (df["revenue"] - df["cogs"] - df["sga_expense"] - df["depreciation"]).round(2)
+
     df["record_id"] = df["ticker"] + "_" + df["fiscal_year"].astype(str)
 
-    prior_cols = [c for c in REQUIRED_LINE_ITEMS if c not in ("ticker",)]
-    prior = df.groupby("ticker")[prior_cols].shift(1)
-    prior.columns = [f"{c}_prior" for c in prior_cols]
+    shift_cols = [c for c in REQUIRED_LINE_ITEMS if c not in ("ticker",)] + ["ebit"]
+    prior = df.groupby("ticker")[shift_cols].shift(1)
+    prior.columns = [f"{c}_prior" for c in shift_cols]
     df = pd.concat([df, prior], axis=1)
 
     # Null out prior-year data where fiscal years are not contiguous
     if "fiscal_year_prior" in df.columns:
         non_contiguous = (df["fiscal_year"] - df["fiscal_year_prior"]) != 1
-        prior_col_names = [f"{c}_prior" for c in prior_cols]
+        prior_col_names = [f"{c}_prior" for c in shift_cols]
         df.loc[non_contiguous, prior_col_names] = pd.NA
 
     df.attrs["rows_without_prior_year"] = int(df["revenue_prior"].isna().sum())

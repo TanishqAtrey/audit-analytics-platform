@@ -190,3 +190,83 @@ def select_financial_statements(request: FinancialStatementSelectRequest, db: Se
         tickers_loaded=sorted({r.ticker for r in rows}),
         tickers_missing=missing,
     )
+
+
+@router.post("/financial-statements/upload")
+async def upload_financial_statements_csv(
+    file: UploadFile = File(...),
+    replace_existing: bool = True,
+    db: Session = Depends(get_db_session)
+):
+    raw_bytes = b""
+    max_size = settings.max_upload_size_mb * 1024 * 1024
+    while chunk := await file.read(1024 * 1024):
+        raw_bytes += chunk
+        if len(raw_bytes) > max_size:
+            raise HTTPException(status_code=413, detail="File too large.")
+
+    validated_df, warnings = validate_uploaded_csv(raw_bytes, expected_kind="financial_statement")
+    if validated_df is None:
+        raise HTTPException(status_code=400, detail=warnings[0] if warnings else "Uploaded file failed validation.")
+    if validated_df.empty:
+        raise HTTPException(status_code=400, detail="CSV contained no valid rows after validation.")
+
+    dataset_id = str(uuid.uuid4())
+    records_dict = validated_df.replace({np.nan: None}).to_dict(orient="records")
+
+    if replace_existing:
+        try:
+            fs_exc_ids = [e[0] for e in db.query(models.AuditException.id).filter(models.AuditException.domain == "financial_statement").all()]
+            if fs_exc_ids:
+                db.query(models.ReasonCode).filter(models.ReasonCode.exception_id.in_(fs_exc_ids)).delete(synchronize_session=False)
+            db.query(models.AuditException).filter(models.AuditException.domain == "financial_statement").delete(synchronize_session=False)
+            db.query(models.FinancialStatement).delete(synchronize_session=False)
+            db.query(models.BenchmarkResult).filter(models.BenchmarkResult.domain == "financial_statement").delete(synchronize_session=False)
+        except Exception:
+            logger.exception("Failed to clear existing financial statements")
+            db.rollback()
+            raise HTTPException(status_code=500, detail="Failed to clear existing financial statements.")
+    else:
+        try:
+            for r in records_dict:
+                tkr = r.get("ticker")
+                yr = r.get("fiscal_year")
+                if tkr and yr:
+                    db.query(models.FinancialStatement).filter(
+                        models.FinancialStatement.ticker == tkr,
+                        models.FinancialStatement.fiscal_year == yr,
+                    ).delete(synchronize_session=False)
+            db.commit()
+        except Exception:
+            logger.exception("Failed to clean conflicting financial statements")
+            db.rollback()
+
+    try:
+        db.bulk_insert_mappings(models.FinancialStatement, records_dict)
+        db.commit()
+
+        upload_log = models.AuditLog(
+            dataset_used=dataset_id,
+            modules_run=["fs_upload"],
+            parameters={"rows": len(records_dict), "filename": file.filename},
+            run_by="system",
+        )
+        db.add(upload_log)
+        db.commit()
+    except Exception as e:
+        logger.exception("Database insert error for financial statements")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database insert error: {str(e)}")
+
+    tickers_list = sorted(validated_df["ticker"].unique().tolist())
+    years_list = sorted([int(y) for y in validated_df["fiscal_year"].unique().tolist()])
+
+    return {
+        "dataset_id": dataset_id,
+        "rows_ingested": len(records_dict),
+        "companies_detected": len(tickers_list),
+        "vendors_detected": len(tickers_list),
+        "tickers": tickers_list,
+        "years": years_list,
+        "warnings": warnings,
+    }

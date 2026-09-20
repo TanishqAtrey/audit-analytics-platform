@@ -9,8 +9,10 @@ import ListAltIcon from '@mui/icons-material/ListAlt'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
+import RestartAltIcon from '@mui/icons-material/RestartAlt'
 
-import { uploadLedgerCsv, triggerDetectionRun, resetPlatformData } from '../api/client'
+import { uploadLedgerCsv, uploadFinancialStatementCsv, triggerDetectionRun, resetPlatformData, runBenchmark } from '../api/client'
 import { DEFAULTS } from '../config/constants'
 
 export default function UploadData() {
@@ -85,32 +87,55 @@ export default function UploadData() {
     if (file) inspectFile(file)
   }
 
-  // Handle ledger upload
-  const handleUploadLedger = async () => {
+  // Handle file upload & analysis
+  const handleUploadFile = async () => {
     if (!selectedFile) return
     setUploading(true)
     setUploadError(null)
     setUploadResult(null)
     setResetSuccess(null)
     
-    // Step 1: Upload (with replaceExisting option)
-    const result = await uploadLedgerCsv(selectedFile, replaceExisting)
-    if (!result) {
+    if (detectedType === 'statements') {
+      const result = await uploadFinancialStatementCsv(selectedFile, replaceExisting)
+      if (!result) {
+        setUploading(false)
+        setUploadError('Financial statement ingestion failed. Backend server may be offline or returned validation errors.')
+        return
+      }
+
+      const runResult = await triggerDetectionRun('financial_statement', DEFAULTS.FS_DETECTION_THRESHOLD, result.dataset_id)
       setUploading(false)
-      setUploadError('Ingestion failed. Backend server may be offline or returned validation errors.')
-      return
-    }
-    
-    // Step 2: Trigger Detection Engine Core
-    const runResult = await triggerDetectionRun('ledger', DEFAULTS.DETECTION_THRESHOLD, result.dataset_id)
-    setUploading(false)
-    if (runResult) {
-      setUploadResult({
-        ...result,
-        total_exceptions: runResult.total_exceptions
-      })
+      if (runResult) {
+        setUploadResult({
+          ...result,
+          total_exceptions: runResult.total_exceptions
+        })
+        runBenchmark('financial_statement', result.dataset_id).catch(() => {})
+      } else {
+        setUploadError('Financial statements ingested successfully, but failed to run the anomaly detection models.')
+      }
     } else {
-      setUploadError('CSV ingested successfully, but failed to run the anomaly detection models.')
+      // Step 1: Upload (with replaceExisting option)
+      const result = await uploadLedgerCsv(selectedFile, replaceExisting)
+      if (!result) {
+        setUploading(false)
+        setUploadError('Ingestion failed. Backend server may be offline or returned validation errors.')
+        return
+      }
+      
+      // Step 2: Trigger Detection Engine Core
+      const runResult = await triggerDetectionRun('ledger', DEFAULTS.DETECTION_THRESHOLD, result.dataset_id)
+      setUploading(false)
+      if (runResult) {
+        setUploadResult({
+          ...result,
+          total_exceptions: runResult.total_exceptions
+        })
+        // Automatically compute benchmark comparisons in background
+        runBenchmark('ledger', result.dataset_id).catch(() => {})
+      } else {
+        setUploadError('CSV ingested successfully, but failed to run the anomaly detection models.')
+      }
     }
   }
 
@@ -125,10 +150,7 @@ export default function UploadData() {
     setUploadResult(null)
     setSelectedFile(null)
     setDetectedType(null)
-    setSecResult(null)
-    setSecError(null)
-    setSelectedTickers([])
-    setSelectedYears([2023])
+
 
     const res = await resetPlatformData()
     setResetting(false)
@@ -139,93 +161,7 @@ export default function UploadData() {
     }
   }
 
-  // Generate 10k row mock ledger CSV on client side
-  const handleGenerateFakeCsv = () => {
-    const vendors = [
-      'Apex Solutions Ltd', 'BrightPath Consulting', 'CoreTech Systems',
-      'Delta Finance Group', 'Eagle Eye Analytics', 'FrontLine Services',
-      'GlobalData Inc', 'Horizon Partners', 'Infinity Solutions',
-      'JetStream Corp', 'Keystone Advisory', 'Luminary Holdings'
-    ]
-    
-    const headers = [
-      'vendor', 'amount', 'currency', 'invoice_number', 'invoice_date',
-      'po_reference', 'gr_reference', 'po_amount', 'po_quantity', 'gr_quantity'
-    ]
-    
-    const rows = [headers.join(',')]
-    const rowCount = 10000
-    
-    for (let i = 1; i <= rowCount; i++) {
-      const vendor = vendors[Math.floor(Math.random() * vendors.length)]
-      
-      let amount
-      // 2% chance of duplicate / threshold anomaly
-      if (Math.random() < 0.02) {
-        amount = 9999.99
-      } else {
-        // Log-normal amount distribution matching Benford expectations
-        amount = +(Math.pow(10, 2 + Math.random() * 3.5)).toFixed(2)
-      }
-      
-      const invNum = `INV-${100000 + i}`
-      const daysAgo = Math.floor(Math.random() * 180)
-      const d = new Date()
-      d.setDate(d.getDate() - daysAgo)
-      const invDate = d.toISOString().slice(0, 10)
-      
-      const hasPo = Math.random() < 0.85
-      const poRef = hasPo ? `PO-${200000 + i}` : ''
-      const grRef = hasPo ? `GR-${300000 + i}` : ''
-      
-      let poAmount = ''
-      if (hasPo) {
-        // Mismatched amounts (1.5% chance)
-        if (Math.random() < 0.015) {
-          poAmount = +(amount * 1.1).toFixed(2)
-        } else {
-          poAmount = amount
-        }
-      }
-      
-      const poQty = hasPo ? Math.floor(1 + Math.random() * 100) : ''
-      let grQty = ''
-      if (hasPo) {
-        // Under-deliveries (1% chance)
-        if (Math.random() < 0.01) {
-          grQty = Math.floor(poQty * 0.9)
-        } else {
-          grQty = poQty
-        }
-      }
-      
-      const row = [
-        `"${vendor}"`,
-        amount,
-        `"${DEFAULTS.CURRENCY}"`,
-        `"${invNum}"`,
-        invDate,
-        poRef ? `"${poRef}"` : '',
-        grRef ? `"${grRef}"` : '',
-        poAmount,
-        poQty,
-        grQty
-      ]
-      
-      rows.push(row.join(','))
-    }
-    
-    const csvContent = rows.join('\n')
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.setAttribute('href', url)
-    link.setAttribute('download', 'mock_ledger_10k.csv')
-    link.style.visibility = 'hidden'
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-  }
+
 
 
 
@@ -258,17 +194,16 @@ export default function UploadData() {
       </Card>
 
       {/* Ingest Ledger CSV */}
-      {(
         <Grid container spacing={3}>
           <Grid item xs={12} md={7}>
             <Card sx={{ borderRadius: '12px', boxShadow: '0 2px 12px 0 rgba(0,0,0,.08)' }}>
               <CardContent sx={{ p: { xs: 2.5, sm: 3 } }}>
                 <Box sx={{ mb: 2 }}>
                   <Typography variant="h6" fontWeight={700} sx={{ mb: 0.5, fontSize: '1.1rem' }}>
-                    Accounts Payable Ledger Ingestion
+                    Data File Ingestion (Ledgers & Financial Statements)
                   </Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.82rem' }}>
-                    Ingest transaction ledger CSVs to execute Benford's Law ensemble, duplicate invoice checks, 3-way match, and ML models.
+                    Upload Accounts Payable ledger CSVs or multi-company financial statement CSVs for forensic anomaly and fraud detection.
                   </Typography>
                 </Box>
 
@@ -367,7 +302,7 @@ export default function UploadData() {
                 <Button
                   variant="contained"
                   fullWidth
-                  onClick={handleUploadLedger}
+                  onClick={handleUploadFile}
                   disabled={!selectedFile || uploading}
                   size="large"
                   sx={{
@@ -402,15 +337,7 @@ export default function UploadData() {
                 {/* Secondary Auxiliary Controls */}
                 <Stack direction="row" spacing={1.5} justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
                   <Stack direction="row" spacing={1}>
-                    <Button
-                      variant="outlined"
-                      color="secondary"
-                      size="small"
-                      onClick={handleGenerateFakeCsv}
-                      sx={{ textTransform: 'none', fontWeight: 600, borderRadius: 2, fontSize: '0.75rem' }}
-                    >
-                      Generate 10k Mock CSV
-                    </Button>
+
                     <Button
                       variant="outlined"
                       color="error"
@@ -468,8 +395,8 @@ export default function UploadData() {
                       </Grid>
                       <Grid item xs={4}>
                         <Paper variant="outlined" sx={{ p: 1.5, textAlign: 'center', borderRadius: 2 }}>
-                          <Typography variant="h6" fontWeight={800} color="#00bcd4">{uploadResult.vendors_detected}</Typography>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem', display: 'block', lineHeight: 1.2 }}>Vendors</Typography>
+                          <Typography variant="h6" fontWeight={800} color="#00bcd4">{uploadResult.companies_detected !== undefined ? uploadResult.companies_detected : uploadResult.vendors_detected}</Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem', display: 'block', lineHeight: 1.2 }}>{uploadResult.companies_detected !== undefined ? 'Companies' : 'Vendors'}</Typography>
                         </Paper>
                       </Grid>
                       <Grid item xs={4}>
@@ -479,6 +406,25 @@ export default function UploadData() {
                         </Paper>
                       </Grid>
                     </Grid>
+
+                    <Button
+                      variant="contained"
+                      fullWidth
+                      href={uploadResult.companies_detected !== undefined ? "/financial" : "/ledger"}
+                      sx={{
+                        mb: 2,
+                        py: 1,
+                        fontWeight: 700,
+                        textTransform: 'none',
+                        borderRadius: 2,
+                        bgcolor: uploadResult.companies_detected !== undefined ? '#ed6c02' : '#9c27b0',
+                        '&:hover': {
+                          bgcolor: uploadResult.companies_detected !== undefined ? '#e65100' : '#7b1fa2',
+                        }
+                      }}
+                    >
+                      {uploadResult.companies_detected !== undefined ? 'View Financial Statement Exceptions' : 'View Ledger Exceptions'}
+                    </Button>
 
                     {uploadResult.warnings?.length > 0 && (
                       <Box sx={{ bgcolor: '#fffde7', border: '1px solid #fff59d', borderRadius: 2, p: 2 }}>
@@ -504,7 +450,6 @@ export default function UploadData() {
             </Card>
           </Grid>
         </Grid>
-      )}
 
 
 

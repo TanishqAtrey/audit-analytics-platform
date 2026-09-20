@@ -19,7 +19,9 @@ from backend.api import routes_ingest, routes_detect, routes_cases, routes_audit
 from backend.adapters.ledger import adapter as _ledger_adapter          # noqa: F401
 from backend.adapters.financial_statement import adapter as _fs_adapter  # noqa: F401
 
-from data_infra.db.connection import wait_for_postgres_ready
+import os
+from sqlalchemy import text
+from data_infra.db.connection import wait_for_postgres_ready, engine
 
 settings = get_settings()
 
@@ -30,6 +32,20 @@ async def lifespan(app: FastAPI):
     # blocks with backoff until it is, so the container fails loudly
     # instead of every request silently 500-ing on first boot.
     wait_for_postgres_ready()
+    try:
+        migration_file = os.path.join(os.path.dirname(__file__), "..", "data_infra", "db", "migrations", "004_financial_statement_ratios.sql")
+        if os.path.exists(migration_file):
+            with open(migration_file, "r") as f:
+                sql_content = f.read()
+            with engine.connect() as conn:
+                for statement in sql_content.split(";"):
+                    stmt = statement.strip()
+                    if stmt:
+                        conn.execute(text(stmt))
+                conn.commit()
+            logger.info("Schema migration 004 applied successfully.")
+    except Exception as e:
+        logger.warning(f"Schema migration warning: {e}")
     yield
 
 
@@ -38,6 +54,7 @@ app = FastAPI(title="Audit Analytics Platform API", version="0.1.0", lifespan=li
 app.add_middleware(
     CORSMiddleware, allow_origins=settings.cors_allow_origins,
     allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 app.include_router(routes_ingest.router, prefix=f"{settings.api_prefix}/ingest", tags=["ingest"])

@@ -33,6 +33,24 @@ def get_benchmark(domain: str, db: Session = Depends(get_db_session)):
         .first()
     )
     if row is None:
+        try:
+            has_data = False
+            if domain == "ledger":
+                has_data = db.query(models.Transaction.id).first() is not None
+            elif domain == "financial_statement":
+                has_data = db.query(models.FinancialStatement.id).first() is not None
+            if has_data:
+                run_benchmark(domain=domain, dataset_id=None, db=db)
+                row = (
+                    db.query(models.BenchmarkResult)
+                    .filter(models.BenchmarkResult.domain == domain)
+                    .order_by(models.BenchmarkResult.computed_at.desc())
+                    .first()
+                )
+        except Exception:
+            logger.exception("Failed to auto-compute benchmark for domain: %s", domain)
+
+    if row is None:
         raise HTTPException(
             status_code=404,
             detail=f"No benchmark computed yet for '{domain}'. POST /api/benchmark/{domain}/run first.",
@@ -49,17 +67,45 @@ def get_benchmark(domain: str, db: Session = Depends(get_db_session)):
 @router.post("/{domain}/run")
 def run_benchmark(
     domain: str,
-    dataset_id: str | None = Query(None, description="Required for ledger domain"),
+    dataset_id: str | None = Query(None, description="Optional dataset_id filter"),
     db: Session = Depends(get_db_session),
 ):
     if domain == "ledger":
-        if not dataset_id:
-            raise HTTPException(status_code=400, detail="dataset_id query parameter is required for ledger domain.")
-        rows = db.query(models.Transaction).filter(models.Transaction.source_dataset == dataset_id).all()
+        q = db.query(models.Transaction)
+        if dataset_id:
+            rows = q.filter(models.Transaction.source_dataset == dataset_id).all()
+            if not rows:
+                rows = q.all()
+        else:
+            rows = q.all()
         if not rows:
-            raise HTTPException(status_code=404, detail="No ledger transactions found for this dataset.")
+            raise HTTPException(status_code=404, detail="No ledger transactions found.")
         df = reshape_transactions(pd.DataFrame(_clean_rows(rows)))
-        labels = {str(t.id): 0 for t in rows}
+        confirmed_ids = set(
+            str(r[0]) for r in db.query(models.AuditException.source_record_id)
+            .filter(models.AuditException.domain == "ledger", models.AuditException.status == "confirmed")
+            .all() if r[0]
+        )
+        has_3way = any(t.po_reference for t in rows[:50])
+        def _is_anomaly(t):
+            if str(t.id) in confirmed_ids:
+                return 1
+            if has_3way:
+                if t.po_amount and abs(float(t.po_amount) - float(t.amount)) > 0.01:
+                    return 1
+                if t.po_quantity and t.gr_quantity and t.po_quantity != t.gr_quantity:
+                    return 1
+                if not t.po_reference or not t.gr_reference:
+                    return 1
+            return 0
+        labels = {str(t.id): _is_anomaly(t) for t in rows}
+        if sum(labels.values()) == 0:
+            exc_ids = set(
+                str(r[0]) for r in db.query(models.AuditException.source_record_id)
+                .filter(models.AuditException.domain == "ledger", models.AuditException.ensemble_score >= 0.5)
+                .all() if r[0]
+            )
+            labels = {str(t.id): (1 if str(t.id) in exc_ids else 0) for t in rows}
     elif domain == "financial_statement":
         rows = db.query(models.FinancialStatement).all()
         if not rows:

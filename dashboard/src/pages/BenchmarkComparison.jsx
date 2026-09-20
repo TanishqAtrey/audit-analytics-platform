@@ -122,8 +122,8 @@ export default function BenchmarkComparison() {
       {/* Hero cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         {[
-          { label: 'False Positive Reduction', value: `${benchmark.false_positive_reduction_pct}%`, color: '#f44336', desc: 'At 0.50 threshold vs single-test Benford' },
-          { label: 'Precision Lift', value: `+${benchmark.precision_lift_pct}%`, color: '#4caf50', desc: 'Average lift across all thresholds' },
+          { label: 'False Positive Reduction', value: `${benchmark.false_positive_reduction_pct}%`, color: '#4caf50', desc: 'At 0.50 threshold vs single-test Benford' },
+          { label: 'Precision Lift', value: `+${benchmark.precision_lift_pct}%`, color: '#2563eb', desc: 'At 0.50 threshold vs single-test Benford' },
           { label: 'Peak F1 Improvement', value: `+${((Math.max(...benchmark.ensemble_f1) - Math.max(...benchmark.baseline_f1)) * 100).toFixed(1)}pp`, color: '#00bcd4', desc: 'Ensemble maximum F1 vs baseline' },
         ].map(({ label, value, color, desc }) => (
           <Grid item xs={12} md={4} key={label}>
@@ -222,8 +222,10 @@ export default function BenchmarkComparison() {
                       <TableCell sx={{ py: 1 }}>{((benchmark.baseline_recall[idx] ?? 0) * 100).toFixed(0)}%</TableCell>
                       <TableCell sx={{ py: 1, fontWeight: 600, color: '#2196f3' }}>{((benchmark.ensemble_recall[idx] ?? 0) * 100).toFixed(0)}%</TableCell>
                       <TableCell sx={{ py: 1 }}>{bf1.toFixed(3)}</TableCell>
-                      <TableCell sx={{ py: 1, fontWeight: 700 }}>{ef1.toFixed(3)}</TableCell>
-                      <TableCell sx={{ py: 1, fontWeight: 700, color: lift > 0 ? '#4caf50' : '#f44336' }}>+{lift.toFixed(1)}%</TableCell>
+                      <TableCell sx={{ py: 1 }}>{ef1.toFixed(3)}</TableCell>
+                      <TableCell sx={{ py: 1, fontWeight: 700, color: lift >= 0 ? '#4caf50' : '#f44336' }}>
+                        {lift >= 0 ? `+${lift.toFixed(1)}%` : `${lift.toFixed(1)}%`}
+                      </TableCell>
                     </TableRow>
                   )
                 })}

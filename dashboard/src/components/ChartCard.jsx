@@ -85,9 +85,9 @@ export function WhiteChartCard({ title, subtitle, footer, children, height = 260
         {footer && (
           <>
             <Divider sx={{ my: 1.5, borderColor: '#f1f5f9' }} />
-            <Typography variant="caption" sx={{ color: '#64748b', fontSize: '0.78rem', display: 'block' }}>
+            <Box sx={{ color: '#64748b', fontSize: '0.78rem' }}>
               {footer}
-            </Typography>
+            </Box>
           </>
         )}
       </CardContent>

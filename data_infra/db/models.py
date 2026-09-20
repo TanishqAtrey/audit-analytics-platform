@@ -53,6 +53,31 @@ class FinancialStatement(Base):
     market_value_equity = Column(Numeric(18, 2), nullable=False)
     total_liabilities = Column(Numeric(18, 2), nullable=False)
     is_aaer_fraud_case = Column(Boolean, default=False)
+    
+    # Raw Accounting Item (for accurate Altman X3)
+    ebit = Column(Numeric(18, 2), nullable=True)
+
+    # Altman Z-Score 5 Ratios & Outputs
+    altman_x1_wc_ta = Column(Numeric(10, 4), nullable=True)
+    altman_x2_re_ta = Column(Numeric(10, 4), nullable=True)
+    altman_x3_ebit_ta = Column(Numeric(10, 4), nullable=True)
+    altman_x4_mve_tl = Column(Numeric(10, 4), nullable=True)
+    altman_x5_sales_ta = Column(Numeric(10, 4), nullable=True)
+    altman_z_score = Column(Numeric(10, 4), nullable=True)
+    altman_zone = Column(String(20), nullable=True)
+
+    # Beneish M-Score 8 Indices & Outputs
+    beneish_dsri = Column(Numeric(10, 4), nullable=True)
+    beneish_gmi = Column(Numeric(10, 4), nullable=True)
+    beneish_aqi = Column(Numeric(10, 4), nullable=True)
+    beneish_sgi = Column(Numeric(10, 4), nullable=True)
+    beneish_depi = Column(Numeric(10, 4), nullable=True)
+    beneish_sgai = Column(Numeric(10, 4), nullable=True)
+    beneish_lvgi = Column(Numeric(10, 4), nullable=True)
+    beneish_tata = Column(Numeric(10, 4), nullable=True)
+    beneish_m_score = Column(Numeric(10, 4), nullable=True)
+    beneish_manipulator = Column(Boolean, nullable=True)
+
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 

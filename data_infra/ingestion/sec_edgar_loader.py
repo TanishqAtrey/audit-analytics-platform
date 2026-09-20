@@ -250,5 +250,13 @@ def get_curated_statements(tickers: list[str] | None = None, years: list[int] | 
     if years:
         year_set = set(years)
         res = [s for s in res if s["fiscal_year"] in year_set]
-    return res
+
+    # Ensure ebit is populated
+    out = []
+    for s in res:
+        item = dict(s)
+        if "ebit" not in item:
+            item["ebit"] = round(float(item.get("revenue", 0.0)) - float(item.get("cogs", 0.0)) - float(item.get("sga_expense", 0.0)) - float(item.get("depreciation", 0.0)), 2)
+        out.append(item)
+    return out
 
