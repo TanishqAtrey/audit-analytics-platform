@@ -197,3 +197,9 @@ audit-analytics-platform/
 
 ---
 
+## Technical Stack & Design Choices
+
+- **Material Dashboard UI**: Styled with clean gradients, floating card shadows, and custom headers mimicking Google's Material Design principles.
+- **Recharts Integration**: Native React charting widgets styled directly to match the dark theme and light-paper components.
+- **Axios Fallback Layer**: Ensures the frontend remains fully interactive with mock datasets when the PostgreSQL backend is offline.
+- **Docker Compose Orchestration**: Packs database, FastAPI backend, and React build servers in separate containers with shared volumes.
