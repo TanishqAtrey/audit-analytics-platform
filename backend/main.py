@@ -11,8 +11,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.config import get_settings
-from backend.api import routes_ingest, routes_detect, routes_cases, routes_audit, routes_benchmark
 
 # Importing (not calling) the adapters is what populates core.registry —
 # each test module self-registers via @register_test at import time.
