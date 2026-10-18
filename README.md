@@ -97,49 +97,42 @@ make help         # List all available targets
 
 ---
 
-## System Architecture & Workflow
+## System Architecture & UML Design
 
-```mermaid
-graph TD
-    %% Input Layer
-    A["📥 CSV / Excel<br/>Financial Data"] --> B["⚙️ Data Validation<br/>& Preprocessing"]
-    
-    %% Processing Splits
-    subgraph Analysis ["Audit Analytical Engines"]
-        C1["🔍 Transaction Analysis<br/>• Near-Duplicate Detection<br/>• Benford's Law Digits<br/>• Thresholding Filters"]
-        C2["📊 Financial Analysis<br/>• Altman Z-Score Distress<br/>• Beneish M-Score (Manipulator)<br/>• Accounting Ratios"]
-        C3["🤖 Machine Learning Outliers<br/>• Isolation Forest Anomaly<br/>• Local Outlier Factor Proximity"]
-    end
-    
-    B --> C1
-    B --> C2
-    B --> C3
-    
-    %% Consolidation & Risk
-    C1 --> D["🎯 Risk Engine Scorer<br/>(Weighted Composite: 0 — 100)"]
-    C2 --> D
-    C3 --> D
-    
-    %% Downstream Actions
-    D --> E["📢 Explainability & Alert Engine<br/>(Reason Codes & Weights)"]
-    E --> F["🏠 Interactive Dashboard<br/>(Auditor Case Triage)"]
-    F --> G["🔄 Auditor Feedback Loop<br/>(False Positive & Fraud Seeding)"]
-    
-    %% Styling
-    classDef input fill:#eceff1,stroke:#607d8b,stroke-width:2px,color:#000;
-    classDef prep fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#000;
-    classDef analytic fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#000;
-    classDef scorer fill:#fff3e0,stroke:#ff9800,stroke-width:2px,color:#000;
-    classDef alert fill:#ffebee,stroke:#c62828,stroke-width:2px,color:#000;
-    classDef ui fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#000;
-    
-    class A input;
-    class B prep;
-    class C1,C2,C3 analytic;
-    class D scorer;
-    class E,G alert;
-    class F ui;
-```
+### End-to-End Multi-Tier Architecture
+![System Architecture](diagrams/fig1_system_architecture.png)
+
+AuditIQ follows an enterprise three-tier architecture separating the React.js client interface, the Python FastAPI asynchronous analytical engine, and PostgreSQL persistence with SQLAlchemy ORM.
+
+### Static Domain Architecture (UML Class Diagram)
+![UML Class Diagram](diagrams/fig2_uml_class_diagram.png)
+
+The core detection engine defines an abstract polymorphic `DetectionTest` interface. Sub-model adapters implement concrete inference logic, registered dynamically through `AdapterRegistry`, and aggregated via the calibrated soft-voting `EnsembleScorer`.
+
+### Dynamic Execution Pipeline (UML Sequence Diagram)
+![UML Sequence Diagram](diagrams/fig3_uml_sequence_diagram.png)
+
+Asynchronous lifecycle trace: Client CSV upload → Defensive input sanitization → Database staging → Parallel thread pool scoring across adapters → Weighted ensemble consensus → Persistent exception generation → Live case triage.
+
+---
+
+## Platform Interface & Forensic Workflow
+
+### 1. Active Anomaly Drivers & Vendor Outlier Spend
+![Active Anomaly Drivers](diagrams/fig5_active_anomaly_drivers.png)
+*Executive dashboard visualizing active anomaly drivers across accounts payable dimensions and highlighting high-risk vendor outlier expenditure.*
+
+### 2. Exceptions Spotlight Scatter Matrix
+![Exceptions Spotlight Scatter Matrix](diagrams/fig6_exceptions_spotlight.png)
+*Interactive dual-axis scatter matrix plotting transaction monetary values against composite ensemble risk scores, demarcating low-risk, warning, and critical risk clusters.*
+
+### 3. Forensic Exception Dossier & Case Triage
+![Forensic Exception Dossier](diagrams/fig7_forensic_dossier.png)
+*Granular exception dossier revealing exact sub-model score decomposition (Benford, Isolation Forest, LOF, Duplicate, Rules), transaction audit details, auditor notes, and lifecycle status transition controls (Open, In Review, Resolved, Dismissed).*
+
+### 4. Detection Performance & Risk Zone Distribution
+![Detection Performance](diagrams/fig4_detection_performance.png)
+*Detection performance card demonstrating 87.5% True Positive Rate, 0.882 F1 score, risk zone distributions, and active detection pipeline status.*
 
 ---
 
